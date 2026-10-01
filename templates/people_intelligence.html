@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}People Intelligence Hub | Smart CCTV AI Platform{% endblock %}
+{% block page_title %}Real-Time People Intelligence & Posture Telemetry{% endblock %}
+
+{% block content %}
+<div class="fleet-action-bar">
+  <div>
+    <h2 style="font-size: 18px; font-weight: 700;">Live Subject Tracking & Pose Analytics</h2>
+    <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+      Real-time biomechanical analysis across all connected cameras. Zero fabricated telemetry.
+    </p>
+  </div>
+  <div class="fleet-actions-group">
+    <span class="live-indicator"><span class="pulsing-dot-green"></span> Vision Engine Active</span>
+    <button class="btn btn-outline" onclick="fetchPeopleIntelligence()">🔄 Refresh Now</button>
+  </div>
+</div>
+
+<!-- Active Subjects Grid -->
+<div class="people-intel-hub-grid" id="peopleHubGrid" style="margin-top: 20px;">
+  <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px; background: var(--bg-card); border-radius: var(--radius-md);">
+    Scanning active camera video frames for subjects...
+  </div>
+</div>
+
+<!-- Biomechanical Safety Standards Reference -->
+<div class="card" style="margin-top: 24px;">
+  <div class="section-title" style="margin-bottom: 12px;">📊 Subject Safety & Biomechanical Rules</div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+    <div style="padding: 14px; background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); border-radius: var(--radius-sm);">
+      <div style="font-weight: 700; color: var(--primary);">1. Upright Normal Posture</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+        Aspect ratio &gt; 1.3, body angle &gt; 65°. Head vertically above hips. Normal classification (Walking, Standing, Working).
+      </div>
+    </div>
+    <div style="padding: 14px; background: rgba(255, 171, 0, 0.05); border: 1px solid rgba(255, 171, 0, 0.2); border-radius: var(--radius-sm);">
+      <div style="font-weight: 700; color: var(--warning);">2. Suspicious Posture</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+        Rapid vertical descent velocity + aspect ratio inversion &lt; 0.9. Temporal state machine enters Suspicious verification.
+      </div>
+    </div>
+    <div style="padding: 14px; background: rgba(255, 23, 68, 0.05); border: 1px solid rgba(255, 23, 68, 0.2); border-radius: var(--radius-sm);">
+      <div style="font-weight: 700; color: var(--danger);">3. Confirmed Fall Incident</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+        Floor persistence (&gt; 12 frames on floor) + high ML fall probability (&gt; 0.70). Triggers real-time audio/visual safety dispatch.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function fetchPeopleIntelligence() {
+  const container = document.getElementById("peopleHubGrid");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/people-intelligence");
+    const data = await res.json();
+    const subjects = data.subjects || [];
+
+    if (subjects.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 50px; background: var(--bg-card); border-radius: var(--radius-md);">
+          <div style="font-size: 32px; margin-bottom: 8px;">👤</div>
+          <div style="font-weight: 600; font-size: 15px;">No Active Subjects in Camera Views</div>
+          <div style="font-size: 12px; margin-top: 4px;">When people enter connected camera fields of view, real-time pose and activity telemetry will populate here.</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = subjects.map(s => {
+      const isFall = (s.fall_stage === "CONFIRMED_FALL" || s.current_activity === "falling");
+      const isSusp = (s.fall_stage === "POSSIBLE_FALL" || s.fall_stage === "SUSPICIOUS");
+      const cardBorder = isFall ? 'border: 1px solid var(--danger); box-shadow: 0 0 15px var(--danger-glow);' : 
+                         isSusp ? 'border: 1px solid var(--warning);' : 'border: 1px solid var(--border-color);';
+
+      const actBadgeClass = isFall ? 'badge-danger' : isSusp ? 'badge-warning' : 'badge-info';
+      const idBadgeClass = s.identity_status === 'recognized' ? 'badge-success' : 'badge-unknown';
+
+      return `
+        <div class="stat-card" style="${cardBorder} flex-direction: column; align-items: stretch; gap: 12px; padding: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="cam-badge">${s.camera_id}</span>
+            <span class="badge ${idBadgeClass}">${s.employee_code || 'Unknown Subject'}</span>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <div style="font-size: 18px; font-weight: 800;">Track #${s.track_id}</div>
+            <span class="badge ${actBadgeClass}">${(s.current_activity || 'WORKING').toUpperCase()} (${Math.round((s.activity_confidence || 0.9) * 100)}%)</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+            <div>Employee: <strong>${s.employee_name || 'Unregistered'}</strong></div>
+            <div>Fall State: <strong style="${isFall ? 'color: var(--danger);' : ''}">${s.fall_stage || 'NORMAL'}</strong></div>
+            <div>Dwell Age: <strong>${s.age_frames || 1} frames</strong></div>
+            <div>Stream: <strong>${s.is_demo ? 'DEMO' : 'LIVE'}</strong></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error("Error loading people intelligence:", err);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  fetchPeopleIntelligence();
+  setInterval(fetchPeopleIntelligence, 1500);
+});
+</script>
+{% endblock %}

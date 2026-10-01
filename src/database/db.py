@@ -16,27 +16,46 @@ def get_db():
     finally:
         db.close()
 
+from sqlalchemy import text
+
 def init_db():
     """Initializes schema and seeds default camera and employee records if empty."""
     Base.metadata.create_all(bind=engine)
     
+    # Safe migration for existing SQLite database files
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE cameras ADD COLUMN ai_enabled BOOLEAN DEFAULT 1"))
+            conn.commit()
+        except Exception:
+            pass
+
     db: Session = SessionLocal()
     try:
-        # Seed Cameras from cameras.yaml
+        # Seed or sync Cameras from cameras.yaml
         for cam_cfg in config.cameras:
             existing = db.query(Camera).filter(Camera.id == cam_cfg["id"]).first()
             if not existing:
                 cam = Camera(
                     id=cam_cfg["id"],
                     name=cam_cfg.get("name", cam_cfg["id"]),
-                    source_type=cam_cfg.get("source_type", "synthetic"),
+                    source_type=cam_cfg.get("source_type", "webcam"),
                     source_uri=str(cam_cfg.get("source_uri", "0")),
                     location=cam_cfg.get("location", "Facility"),
-                    fps=cam_cfg.get("fps", 15),
-                    status="active",
+                    fps=cam_cfg.get("fps", 24),
+                    ai_enabled=cam_cfg.get("ai_enabled", True),
+                    status="active" if cam_cfg.get("enabled", True) else "disabled",
                     description=cam_cfg.get("description", "")
                 )
                 db.add(cam)
+            else:
+                existing.name = cam_cfg.get("name", existing.name)
+                existing.source_type = cam_cfg.get("source_type", existing.source_type)
+                existing.source_uri = str(cam_cfg.get("source_uri", existing.source_uri))
+                existing.location = cam_cfg.get("location", existing.location)
+                existing.fps = cam_cfg.get("fps", existing.fps)
+                existing.ai_enabled = cam_cfg.get("ai_enabled", True)
+                existing.status = "active" if cam_cfg.get("enabled", True) else "disabled"
 
         # Seed Sample Employees if none exist
         if db.query(Employee).count() == 0:

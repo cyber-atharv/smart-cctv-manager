@@ -30,7 +30,10 @@
         <a href="/"><span>📊</span> Dashboard</a>
       </li>
       <li class="nav-item {% if request.url.path == '/cameras' %}active{% endif %}">
-        <a href="/cameras"><span>🎥</span> Live Cameras</a>
+        <a href="/cameras"><span>🎥</span> Camera Fleet</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/people-intelligence' %}active{% endif %}">
+        <a href="/people-intelligence"><span>🧠</span> People Intelligence</a>
       </li>
       <li class="nav-item {% if request.url.path == '/events' %}active{% endif %}">
         <a href="/events"><span>🚨</span> Safety Events</a>

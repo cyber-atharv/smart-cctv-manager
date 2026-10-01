@@ -53,15 +53,19 @@ class FaceProfile(Base):
     def embedding(self, val):
         self.embedding_json = json.dumps(val)
 
+from sqlalchemy import Boolean
+from src.video.camera import mask_camera_uri
+
 class Camera(Base):
     __tablename__ = "cameras"
 
     id = Column(String(50), primary_key=True) # e.g. 'CAM-01'
     name = Column(String(100), nullable=False)
-    source_type = Column(String(20), default="synthetic") # webcam, file, rtsp, synthetic
+    source_type = Column(String(20), default="webcam") # webcam, mobile, rtsp, onvif, file, demo
     source_uri = Column(String(255), default="0")
     location = Column(String(100), default="Main Site")
-    fps = Column(Integer, default=15)
+    fps = Column(Integer, default=24)
+    ai_enabled = Column(Boolean, default=True)
     status = Column(String(20), default="active") # active, offline, error
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -73,10 +77,12 @@ class Camera(Base):
             "id": self.id,
             "name": self.name,
             "source_type": self.source_type,
-            "source_uri": self.source_uri,
+            "source_uri": mask_camera_uri(self.source_uri),
             "location": self.location,
             "fps": self.fps,
+            "ai_enabled": bool(self.ai_enabled) if self.ai_enabled is not None else True,
             "status": self.status,
+            "is_demo": (self.source_type == "demo"),
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }

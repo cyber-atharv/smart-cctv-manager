@@ -1,36 +1,245 @@
 {% extends "base.html" %}
 
-{% block title %}Live Cameras | Smart CCTV AI Safety Platform{% endblock %}
+{% block title %}Camera Fleet & Stream Management | Smart CCTV AI Platform{% endblock %}
 {% block page_title %}CCTV Fleet & Stream Management{% endblock %}
 
 {% block content %}
-<div class="section-header">
-  <div class="section-title">Connected Camera Sources ({{ cameras|length }})</div>
+<!-- Top Action Bar -->
+<div class="fleet-action-bar">
+  <div>
+    <h2 style="font-size: 18px; font-weight: 700;">Active Video Sources ({{ cameras|length }})</h2>
+    <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+      Manage connected webcams, DroidCam mobile streams, RTSP network cameras, and AI inference pipelines.
+    </p>
+  </div>
+  
+  <div class="fleet-actions-group">
+    <button class="btn btn-outline" onclick="openScanModal('local')">
+      🔍 Scan Local Webcams
+    </button>
+    <button class="btn btn-outline" onclick="openScanModal('network')">
+      🌐 Scan ONVIF Cameras
+    </button>
+    <button class="btn btn-primary" onclick="openAddCameraModal()">
+      + Add Camera Source
+    </button>
+  </div>
 </div>
 
-<div class="cameras-container">
+<!-- Cameras Grid -->
+<div class="cameras-container" style="margin-top: 20px;">
+  {% if cameras|length == 0 %}
+  <div class="no-camera-banner" style="width: 100%;">
+    <div class="no-cam-icon">📹</div>
+    <div class="no-cam-title">NO CAMERAS CONFIGURED</div>
+    <div class="no-cam-desc">
+      Add a local webcam, mobile stream (DroidCam), or RTSP endpoint to begin live CCTV monitoring.
+    </div>
+    <div class="no-cam-actions">
+      <button class="btn btn-primary" onclick="openAddCameraModal()">+ Add New Camera</button>
+      <button class="btn btn-outline" onclick="quickConnectWebcam()">🔍 Auto-Detect Local Webcam</button>
+    </div>
+  </div>
+  {% else %}
   {% for cam in cameras %}
-  <div class="camera-card">
+  <div class="camera-card {% if not cam.is_online %}cam-offline-card{% endif %}" id="fleet-card-{{ cam.id }}">
     <div class="camera-header">
       <div class="camera-title">
         <span class="cam-badge">{{ cam.id }}</span>
-        <span>{{ cam.name }}</span>
+        <span class="cam-name">{{ cam.name }}</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="live-indicator" style="font-size: 10px; padding: 2px 8px;">ACTIVE</span>
+      <div class="cam-header-tags">
+        {% if cam.is_demo %}
+          <span class="badge badge-demo">DEMO / SYNTHETIC</span>
+        {% elif cam.is_online %}
+          <span class="badge badge-live"><span class="pulsing-dot-green"></span> ONLINE</span>
+        {% else %}
+          <span class="badge badge-offline">⚠ OFFLINE</span>
+        {% endif %}
+
+        <span class="badge {% if cam.ai_enabled %}badge-ai-active{% else %}badge-ai-stopped{% endif %}" id="fleet-ai-badge-{{ cam.id }}">
+          {% if cam.ai_enabled %}AI: ACTIVE{% else %}AI: STOPPED{% endif %}
+        </span>
       </div>
     </div>
 
     <div class="camera-view">
-      <img class="camera-img" src="/api/cameras/{{ cam.id }}/stream" alt="Live Feed for {{ cam.id }}">
+      <img class="camera-img" id="fleet-stream-{{ cam.id }}" src="/api/cameras/{{ cam.id }}/stream?mode=ai" alt="Feed for {{ cam.id }}">
+      <div class="camera-controls-overlay">
+        <button class="ctrl-btn" onclick="toggleCameraAI('{{ cam.id }}')">
+          ⚡ <span id="fleet-ai-btn-text-{{ cam.id }}">{% if cam.ai_enabled %}Pause AI{% else %}Start AI{% endif %}</span>
+        </button>
+        <button class="ctrl-btn" onclick="toggleStreamMode('{{ cam.id }}')">
+          👁 Raw View
+        </button>
+      </div>
     </div>
 
-    <div class="camera-footer">
-      <div>Location: <strong>{{ cam.location }}</strong></div>
-      <div>Source: <strong style="text-transform: uppercase;">{{ cam.source_type }}</strong></div>
-      <div>Target: <strong>{{ cam.fps }} FPS</strong></div>
+    <div class="camera-footer" style="flex-direction: column; gap: 8px; align-items: stretch;">
+      <div style="display: flex; justify-content: space-between; font-size: 11px;">
+        <span>Location: <strong>{{ cam.location }}</strong></span>
+        <span>Source: <strong style="text-transform: uppercase;">{{ cam.source_type }}</strong></span>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+        <span>Resolution: <strong>{{ cam.resolution }}</strong></span>
+        <span>FPS: <strong>{{ cam.measured_fps or cam.fps }}</strong></span>
+        <span>URI: <code style="color: var(--primary);">{{ cam.source_uri }}</code></span>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="card-action-buttons">
+        {% if not cam.is_online and not cam.is_demo %}
+        <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px;" onclick="reconnectCamera('{{ cam.id }}')">
+          🔄 Reconnect
+        </button>
+        {% endif %}
+        <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px;" onclick="toggleCameraAI('{{ cam.id }}')">
+          {% if cam.ai_enabled %}Stop AI Analysis{% else %}Start AI Analysis{% endif %}
+        </button>
+        <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; border-color: rgba(255, 23, 68, 0.4); color: var(--danger);" onclick="deleteCamera('{{ cam.id }}')">
+          🗑 Remove
+        </button>
+      </div>
     </div>
   </div>
   {% endfor %}
+  {% endif %}
+</div>
+
+<!-- ==================== ADD CAMERA MODAL ==================== -->
+<div class="alert-modal-backdrop" id="addCameraModal">
+  <div class="alert-modal" style="max-width: 650px;">
+    <div class="alert-modal-header">
+      <div style="display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px;">
+        <span>📹</span> Connect New Camera Source
+      </div>
+      <button class="btn btn-outline" style="padding: 2px 8px; color: #fff; border-color: rgba(255,255,255,0.3);" onclick="closeAddCameraModal()">✕</button>
+    </div>
+
+    <div class="alert-modal-body" style="display: block; padding: 24px;">
+      <!-- Source Type Tabs -->
+      <label class="form-label" style="margin-bottom: 8px;">1. Select Camera Source Type</label>
+      <div class="source-tabs">
+        <button type="button" class="source-tab active" data-type="webcam" onclick="selectSourceTab('webcam')">
+          💻 Webcam / USB
+        </button>
+        <button type="button" class="source-tab" data-type="mobile" onclick="selectSourceTab('mobile')">
+          📱 DroidCam / Mobile
+        </button>
+        <button type="button" class="source-tab" data-type="rtsp" onclick="selectSourceTab('rtsp')">
+          🌐 RTSP Network IP
+        </button>
+        <button type="button" class="source-tab" data-type="file" onclick="selectSourceTab('file')">
+          📁 Video File
+        </button>
+        <button type="button" class="source-tab" data-type="demo" onclick="selectSourceTab('demo')">
+          🧪 Demo Mode
+        </button>
+      </div>
+
+      <!-- Dynamic Form -->
+      <form id="addCameraForm" onsubmit="event.preventDefault(); submitAddCamera();" style="margin-top: 16px;">
+        <input type="hidden" id="camSourceType" value="webcam">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <label class="form-label">Camera ID</label>
+            <input type="text" id="camId" class="form-control" placeholder="e.g. CAM-04" required>
+          </div>
+          <div>
+            <label class="form-label">Camera Name</label>
+            <input type="text" id="camName" class="form-control" placeholder="e.g. Main Entrance Webcam" required>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <label class="form-label">Location / Zone</label>
+          <input type="text" id="camLocation" class="form-control" placeholder="e.g. Building A - Floor 1" required>
+        </div>
+
+        <!-- Dynamic URI Input Container -->
+        <div id="uriInputContainer" style="margin-top: 14px;">
+          <label class="form-label" id="uriLabel">Device Index / Source</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="camUri" class="form-control" placeholder="0 (for default webcam)" value="0" required>
+            <button type="button" class="btn btn-outline" id="scanLocalBtn" style="white-space: nowrap;" onclick="quickScanLocalWebcams()">
+              🔍 Scan
+            </button>
+          </div>
+          <div class="form-helper" id="uriHelper">
+            Enter <code>0</code> for primary laptop webcam, <code>1</code> for USB/DroidCam virtual camera.
+          </div>
+        </div>
+
+        <!-- Optional RTSP Credentials -->
+        <div id="rtspCredentialsBox" style="display: none; margin-top: 14px; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <label class="form-label">Username (Optional)</label>
+            <input type="text" id="camUsername" class="form-control" placeholder="admin">
+          </div>
+          <div>
+            <label class="form-label">Password (Optional)</label>
+            <input type="password" id="camPassword" class="form-control" placeholder="••••••••">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px;">
+          <div>
+            <label class="form-label">Target FPS</label>
+            <input type="number" id="camFps" class="form-control" value="24" min="5" max="60">
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 24px;">
+            <input type="checkbox" id="camAiEnabled" checked style="width: 18px; height: 18px; accent-color: var(--primary);">
+            <label for="camAiEnabled" style="font-size: 13px; font-weight: 500; cursor: pointer;">
+              Enable AI Vision & Fall Analysis
+            </label>
+          </div>
+        </div>
+
+        <!-- Live Verification Result Box -->
+        <div id="verificationBox" class="verification-card" style="display: none; margin-top: 20px;">
+          <div class="verification-title">
+            <span id="verificationStatusBadge" class="badge badge-info">TESTING STREAM...</span>
+            <span id="verificationTime"></span>
+          </div>
+          <div id="verificationStepsList" class="verification-steps-list">
+            <!-- Dynamic steps populated via JS -->
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="alert-modal-footer" style="justify-content: space-between;">
+      <button type="button" class="btn btn-outline" id="btnTestCamera" onclick="testCameraStream()">
+        🧪 Test & Verify Camera Stream
+      </button>
+
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn btn-outline" onclick="closeAddCameraModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnSaveCamera" onclick="submitAddCamera()">
+          ✓ Connect & Save Camera
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== DEVICE SCAN MODAL ==================== -->
+<div class="alert-modal-backdrop" id="scanModal">
+  <div class="alert-modal" style="max-width: 550px;">
+    <div class="alert-modal-header">
+      <div style="font-weight: 700; font-size: 16px;" id="scanModalTitle">🔍 Discovered Video Devices</div>
+      <button class="btn btn-outline" style="padding: 2px 8px; color: #fff;" onclick="closeScanModal()">✕</button>
+    </div>
+    <div class="alert-modal-body" style="display: block; padding: 20px;">
+      <div id="scanLoading" style="text-align: center; padding: 20px; color: var(--primary);">
+        Probing video devices on system...
+      </div>
+      <div id="scanResultsList" class="discovered-devices-list" style="display: none;"></div>
+    </div>
+    <div class="alert-modal-footer">
+      <button class="btn btn-outline" onclick="closeScanModal()">Close</button>
+    </div>
+  </div>
 </div>
 {% endblock %}

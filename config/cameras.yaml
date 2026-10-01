@@ -1,31 +1,34 @@
 # Configured Cameras / Video Sources
 cameras:
   - id: "CAM-01"
-    name: "Main Hallway - North"
-    location: "Building A - Floor 1"
-    source_type: "synthetic" # 'webcam', 'file', 'rtsp', 'synthetic'
+    name: "Primary Webcam (Local Device)"
+    location: "Operations Workstation"
+    source_type: "webcam" # 'webcam', 'mobile', 'rtsp', 'onvif', 'file', 'demo'
     source_uri: "0"
-    fps: 15
+    fps: 24
+    ai_enabled: true
     enabled: true
-    resolution: [1280, 720]
-    description: "North entrance hallway overlooking main lobby"
+    resolution: [640, 480]
+    description: "Integrated or USB webcam stream with real-time AI safety monitoring"
 
   - id: "CAM-02"
-    name: "Warehouse Work Area"
-    location: "Logistics Hub - Zone B"
-    source_type: "synthetic"
-    source_uri: "sample_fall.mp4"
-    fps: 15
-    enabled: true
+    name: "Mobile DroidCam Stream"
+    location: "Mobile Patrol"
+    source_type: "mobile"
+    source_uri: "http://192.168.1.100:4747/video"
+    fps: 20
+    ai_enabled: true
+    enabled: false
     resolution: [1280, 720]
-    description: "High-risk warehouse loading and assembly zone"
+    description: "Smartphone camera stream via DroidCam / IP Webcam"
 
   - id: "CAM-03"
-    name: "Cafeteria & Lounge"
-    location: "Building A - Floor 2"
-    source_type: "synthetic"
-    source_uri: "sample_sitting.mp4"
+    name: "Demo Simulation Stream"
+    location: "Safety Training Lab"
+    source_type: "demo"
+    source_uri: "synthetic"
     fps: 15
+    ai_enabled: true
     enabled: true
     resolution: [1280, 720]
-    description: "Employee break room and dining area"
+    description: "Explicit educational synthetic demonstration stream"

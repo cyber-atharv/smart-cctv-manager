@@ -3,7 +3,7 @@ import time
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Body
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -17,6 +17,7 @@ from src.database.models import Camera, Employee, FaceProfile, Event, EventRevie
 from src.events.event_manager import event_manager
 from src.face.enrollment import FaceEnrollmentService
 from src.video.pipeline import VisionPipelineWorker
+from src.video.camera import verify_camera_source, scan_local_cameras, scan_network_cameras, mask_camera_uri
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,7 +44,7 @@ async def lifespan(app_instance: FastAPI):
         loop = asyncio.get_event_loop()
     init_db()
     
-    # Initialize vision pipelines for configured cameras
+    # Initialize vision pipelines for configured active cameras
     db = SessionLocal()
     try:
         cams = db.query(Camera).filter(Camera.status == "active").all()
@@ -52,19 +53,23 @@ async def lifespan(app_instance: FastAPI):
                 camera_id=cam.id,
                 source_type=cam.source_type,
                 source_uri=cam.source_uri,
-                fps=cam.fps or 15
+                fps=cam.fps or 24,
+                ai_enabled=cam.ai_enabled if cam.ai_enabled is not None else True
             )
             worker.start()
             pipeline_workers[cam.id] = worker
-            logger.info(f"Initialized active pipeline worker for {cam.id}")
+            logger.info(f"Initialized active pipeline worker for {cam.id} ({cam.source_type})")
     finally:
         db.close()
 
     yield
 
     # Graceful Shutdown
-    for cam_id, worker in pipeline_workers.items():
-        worker.stop()
+    for cam_id, worker in list(pipeline_workers.items()):
+        try:
+            worker.stop()
+        except Exception as e:
+            logger.error(f"Error stopping worker {cam_id}: {e}")
 
 app = FastAPI(
     title=config.system.get("app", {}).get("name", "Smart CCTV AI Safety Platform"),
@@ -114,7 +119,6 @@ async def websocket_alerts(websocket: WebSocket):
     logger.info(f"Dashboard WebSocket client connected (Total: {len(active_websockets)})")
     try:
         while True:
-            # Keep-alive ping/pong
             msg = await websocket.receive_text()
             if msg == "ping":
                 await websocket.send_text("pong")
@@ -122,25 +126,54 @@ async def websocket_alerts(websocket: WebSocket):
         if websocket in active_websockets:
             active_websockets.remove(websocket)
         logger.info("Dashboard WebSocket client disconnected")
+    except Exception as e:
+        if websocket in active_websockets:
+            active_websockets.remove(websocket)
+        logger.debug(f"WebSocket closed: {e}")
 
-# ==================== HTML PAGE ROUTES ====================
+# ==================== HTML DASHBOARD ROUTES ====================
 
 @app.get("/", response_class=HTMLResponse)
 def page_dashboard(request: Request, db: Session = Depends(get_db)):
     cameras = db.query(Camera).all()
-    recent_events = db.query(Event).order_by(Event.timestamp.desc()).limit(10).all()
-    employees_count = db.query(Employee).count()
+    recent_events = db.query(Event).order_by(Event.timestamp.desc()).limit(8).all()
+    employees_count = db.query(Employee).filter(Employee.status == "active").count()
     events_count = db.query(Event).count()
-    confirmed_falls = db.query(Event).filter(Event.status == "confirmed").count()
-    
+    confirmed_falls = db.query(Event).filter(Event.activity == "falling", Event.status == "confirmed").count()
+
+    # Determine real-time camera metadata
+    cam_data = []
+    online_count = 0
+    for c in cameras:
+        worker = pipeline_workers.get(c.id)
+        d = c.to_dict()
+        if worker:
+            d["is_online"] = worker.stream.is_online
+            d["measured_fps"] = worker.stats.get("fps", worker.fps)
+            d["resolution"] = f"{worker.stream.resolution[0]}x{worker.stream.resolution[1]}"
+            d["ai_enabled"] = worker.ai_enabled
+            d["active_tracks_count"] = worker.stats.get("active_tracks", 0)
+            d["tracks"] = worker.current_tracks_info
+            if worker.stream.is_online:
+                online_count += 1
+        else:
+            d["is_online"] = False
+            d["measured_fps"] = 0
+            d["resolution"] = "1280x720"
+            d["ai_enabled"] = False
+            d["active_tracks_count"] = 0
+            d["tracks"] = []
+        cam_data.append(d)
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
-            "cameras": [c.to_dict() for c in cameras],
+            "cameras": cam_data,
             "recent_events": [e.to_dict() for e in recent_events],
             "stats": {
-                "cameras_online": len([c for c in cameras if c.status == 'active']),
+                "cameras_online": online_count,
+                "total_cameras": len(cameras),
                 "employees_enrolled": employees_count,
                 "total_events": events_count,
                 "confirmed_falls": confirmed_falls
@@ -151,19 +184,50 @@ def page_dashboard(request: Request, db: Session = Depends(get_db)):
 @app.get("/cameras", response_class=HTMLResponse)
 def page_cameras(request: Request, db: Session = Depends(get_db)):
     cameras = db.query(Camera).all()
+    cam_list = []
+    for c in cameras:
+        worker = pipeline_workers.get(c.id)
+        d = c.to_dict()
+        if worker:
+            d["is_online"] = worker.stream.is_online
+            d["measured_fps"] = worker.stats.get("fps", worker.fps)
+            d["resolution"] = f"{worker.stream.resolution[0]}x{worker.stream.resolution[1]}"
+            d["ai_enabled"] = worker.ai_enabled
+            d["active_tracks_count"] = worker.stats.get("active_tracks", 0)
+        else:
+            d["is_online"] = False
+            d["measured_fps"] = 0
+            d["resolution"] = "1280x720"
+            d["ai_enabled"] = False
+            d["active_tracks_count"] = 0
+        cam_list.append(d)
+
     return templates.TemplateResponse(
         request=request,
         name="cameras.html",
+        context={"cameras": cam_list}
+    )
+
+@app.get("/people-intelligence", response_class=HTMLResponse)
+def page_people_intelligence(request: Request, db: Session = Depends(get_db)):
+    cameras = db.query(Camera).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="people_intelligence.html",
         context={"cameras": [c.to_dict() for c in cameras]}
     )
 
 @app.get("/events", response_class=HTMLResponse)
 def page_events(request: Request, db: Session = Depends(get_db)):
-    events = db.query(Event).order_by(Event.timestamp.desc()).all()
+    events = db.query(Event).order_by(Event.timestamp.desc()).limit(100).all()
+    cameras = db.query(Camera).all()
     return templates.TemplateResponse(
         request=request,
         name="events.html",
-        context={"events": [e.to_dict() for e in events]}
+        context={
+            "events": [e.to_dict() for e in events],
+            "cameras": [c.to_dict() for c in cameras]
+        }
     )
 
 @app.get("/employees", response_class=HTMLResponse)
@@ -172,20 +236,24 @@ def page_employees(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request=request,
         name="employees.html",
-        context={"employees": [e.to_dict() for e in employees]}
+        context={"employees": [emp.to_dict() for emp in employees]}
     )
 
 @app.get("/enrollment", response_class=HTMLResponse)
 def page_enrollment(request: Request, db: Session = Depends(get_db)):
     employees = db.query(Employee).all()
+    cameras = db.query(Camera).filter(Camera.status == "active").all()
     return templates.TemplateResponse(
         request=request,
         name="enrollment.html",
-        context={"employees": [e.to_dict() for e in employees]}
+        context={
+            "employees": [emp.to_dict() for emp in employees],
+            "cameras": [c.to_dict() for c in cameras]
+        }
     )
 
 @app.get("/analytics", response_class=HTMLResponse)
-def page_analytics(request: Request, db: Session = Depends(get_db)):
+def page_analytics(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="analytics.html",
@@ -203,7 +271,7 @@ def page_settings(request: Request):
         }
     )
 
-# ==================== CAMERA API ====================
+# ==================== CAMERA MANAGEMENT API ====================
 
 @app.get("/api/cameras")
 def get_cameras(db: Session = Depends(get_db)):
@@ -213,22 +281,149 @@ def get_cameras(db: Session = Depends(get_db)):
         d = c.to_dict()
         worker = pipeline_workers.get(c.id)
         if worker:
-            d["fps"] = worker.stats.get("fps", 15.0)
+            d["is_online"] = worker.stream.is_online
+            d["fps"] = worker.stats.get("fps", worker.fps)
+            d["measured_fps"] = worker.stats.get("fps", worker.fps)
+            d["resolution"] = f"{worker.stream.resolution[0]}x{worker.stream.resolution[1]}"
+            d["ai_enabled"] = worker.ai_enabled
             d["active_tracks"] = worker.stats.get("active_tracks", 0)
             d["tracks"] = worker.current_tracks_info
         else:
+            d["is_online"] = False
+            d["fps"] = c.fps or 24
+            d["measured_fps"] = 0
+            d["resolution"] = "1280x720"
+            d["ai_enabled"] = False
             d["active_tracks"] = 0
             d["tracks"] = []
         result.append(d)
     return result
 
+@app.post("/api/cameras/test")
+def test_camera_endpoint(payload: Dict[str, Any] = Body(...)):
+    """Tests a camera source without adding it to the database."""
+    source_type = payload.get("source_type", "webcam")
+    source_uri = str(payload.get("source_uri", "0"))
+    username = payload.get("username", "")
+    password = payload.get("password", "")
+    
+    result = verify_camera_source(
+        source_type=source_type,
+        source_uri=source_uri,
+        username=username,
+        password=password
+    )
+    return result
+
+@app.post("/api/cameras/scan-local")
+def scan_local_devices():
+    """Scans local hardware for webcams and USB video capture devices."""
+    devices = scan_local_cameras()
+    return {"devices": devices, "count": len(devices)}
+
+@app.post("/api/cameras/scan-network")
+def scan_network_devices():
+    """Scans local network for ONVIF IP camera streams."""
+    devices = scan_network_cameras()
+    return {"devices": devices, "count": len(devices)}
+
+@app.post("/api/cameras")
+def add_camera(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """Registers and starts a new camera stream with optional AI pipeline."""
+    cam_id = payload.get("id", "").strip() or f"CAM-{int(time.time()) % 1000:03d}"
+    name = payload.get("name", "").strip() or f"Camera {cam_id}"
+    source_type = payload.get("source_type", "webcam").lower()
+    source_uri = str(payload.get("source_uri", "0")).strip()
+    location = payload.get("location", "Main Site").strip()
+    fps = int(payload.get("fps", 24))
+    ai_enabled = bool(payload.get("ai_enabled", True))
+    username = payload.get("username", "")
+    password = payload.get("password", "")
+
+    # Embed credentials if RTSP
+    if username and password and "rtsp://" in source_uri and "@" not in source_uri:
+        source_uri = source_uri.replace("rtsp://", f"rtsp://{username}:{password}@")
+
+    existing = db.query(Camera).filter(Camera.id == cam_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Camera with ID '{cam_id}' already exists.")
+
+    cam = Camera(
+        id=cam_id,
+        name=name,
+        source_type=source_type,
+        source_uri=source_uri,
+        location=location,
+        fps=fps,
+        ai_enabled=ai_enabled,
+        status="active",
+        description=payload.get("description", "")
+    )
+    db.add(cam)
+    db.commit()
+    db.refresh(cam)
+
+    # Initialize and start pipeline worker
+    worker = VisionPipelineWorker(
+        camera_id=cam.id,
+        source_type=cam.source_type,
+        source_uri=cam.source_uri,
+        fps=cam.fps or 24,
+        ai_enabled=cam.ai_enabled
+    )
+    worker.start()
+    pipeline_workers[cam.id] = worker
+    logger.info(f"Added and started camera {cam.id} ({cam.source_type})")
+
+    return {"success": True, "camera": cam.to_dict()}
+
+@app.delete("/api/cameras/{camera_id}")
+def delete_camera(camera_id: str, db: Session = Depends(get_db)):
+    """Stops worker and deletes camera from database."""
+    cam = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    worker = pipeline_workers.pop(camera_id, None)
+    if worker:
+        worker.stop()
+
+    db.delete(cam)
+    db.commit()
+    return {"success": True, "message": f"Camera {camera_id} deleted."}
+
+@app.post("/api/cameras/{camera_id}/toggle-ai")
+def toggle_camera_ai(camera_id: str, db: Session = Depends(get_db)):
+    """Toggles AI processing layer on/off for a specific camera."""
+    worker = pipeline_workers.get(camera_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera worker not running")
+    
+    new_state = worker.toggle_ai()
+    cam = db.query(Camera).filter(Camera.id == camera_id).first()
+    if cam:
+        cam.ai_enabled = new_state
+        db.commit()
+
+    return {"success": True, "camera_id": camera_id, "ai_enabled": new_state}
+
+@app.post("/api/cameras/{camera_id}/reconnect")
+def reconnect_camera(camera_id: str):
+    """Forces immediate stream reconnect for a camera."""
+    worker = pipeline_workers.get(camera_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera worker not running")
+    worker.reconnect()
+    return {"success": True, "camera_id": camera_id, "is_online": worker.stream.is_online}
+
 @app.get("/api/cameras/{camera_id}/stream")
-def stream_camera(camera_id: str):
+def stream_camera(camera_id: str, mode: str = Query("ai", pattern="^(ai|raw)$")):
+    """Streams MJPEG video feed: ?mode=ai (annotated with YOLO/pose) or ?mode=raw (clean live stream)."""
     worker = pipeline_workers.get(camera_id)
     if not worker:
         raise HTTPException(status_code=404, detail="Camera stream not found or inactive")
     return StreamingResponse(
-        worker.get_mjpeg_generator(),
+        worker.get_mjpeg_generator(mode=mode),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
@@ -236,14 +431,33 @@ def stream_camera(camera_id: str):
 def get_camera_status(camera_id: str):
     worker = pipeline_workers.get(camera_id)
     if not worker:
-        return {"camera_id": camera_id, "status": "offline", "active_tracks": 0, "fps": 0.0}
+        return {"camera_id": camera_id, "status": "offline", "is_online": False, "ai_enabled": False, "active_tracks": 0, "fps": 0.0}
     return {
         "camera_id": camera_id,
-        "status": "active",
-        "fps": worker.stats.get("fps", 15.0),
+        "status": "active" if worker.stream.is_online else "offline",
+        "is_online": worker.stream.is_online,
+        "ai_enabled": worker.ai_enabled,
+        "fps": worker.stats.get("fps", worker.fps),
+        "resolution": f"{worker.stream.resolution[0]}x{worker.stream.resolution[1]}",
         "active_tracks": worker.stats.get("active_tracks", 0),
         "tracks": worker.current_tracks_info
     }
+
+# ==================== PEOPLE INTELLIGENCE API ====================
+
+@app.get("/api/people-intelligence")
+def get_people_intelligence(db: Session = Depends(get_db)):
+    """Returns real-time telemetry of all tracked subjects across all cameras."""
+    subjects = []
+    for cam_id, worker in pipeline_workers.items():
+        if not worker.stream.is_online:
+            continue
+        for track in worker.current_tracks_info:
+            item = dict(track)
+            item["camera_id"] = cam_id
+            item["is_demo"] = (worker.source_type == "demo")
+            subjects.append(item)
+    return {"subjects": subjects, "total_active_people": len(subjects)}
 
 # ==================== SAFETY EVENTS API ====================
 
@@ -278,7 +492,7 @@ def confirm_event(event_id: str, note: Optional[str] = None, reviewer: str = "Su
         raise HTTPException(status_code=404, detail="Event not found")
     return {"success": True, "event": event.to_dict()}
 
-@app.post("/api/events/{event_id}/reject")
+@app.post("/api/events/{event_id}/rejected")
 def reject_event(event_id: str, note: Optional[str] = None, reviewer: str = "Supervisor", db: Session = Depends(get_db)):
     event = event_manager.review_event(db, event_id, decision="rejected", note=note, reviewed_by=reviewer)
     if not event:
@@ -286,34 +500,28 @@ def reject_event(event_id: str, note: Optional[str] = None, reviewer: str = "Sup
     return {"success": True, "event": event.to_dict()}
 
 @app.post("/api/events/simulate")
-def simulate_fall_event(
-    camera_id: str = "CAM-01",
-    employee_code: Optional[str] = "EMP001",
-    db: Session = Depends(get_db)
-):
-    """Triggers an instantaneous safety fall incident event for test/demonstration purposes."""
-    emp = db.query(Employee).filter(Employee.employee_code == employee_code).first() if employee_code else None
-    
+def simulate_fall_event(camera_id: str = "CAM-01", db: Session = Depends(get_db)):
+    """Dispatches a test fall event for integration verification."""
     worker = pipeline_workers.get(camera_id)
     raw_frame = worker.get_latest_frame() if worker else None
     buffer = worker.video_buffer if worker else None
-
-    evt = event_manager.create_event(
+    
+    event = event_manager.create_event(
         db=db,
         camera_id=camera_id,
-        track_id=7,
-        employee_id=emp.id if emp else None,
+        track_id=99,
+        employee_id=1,
         activity="falling",
         activity_confidence=0.96,
-        identity_confidence=0.92 if emp else 0.0,
-        identity_status="recognized" if emp else "unknown",
+        identity_confidence=0.88,
+        identity_status="recognized",
         current_frame=raw_frame,
         video_buffer=buffer,
-        notes="Simulated Fall Event (Demonstration Scenario)"
+        notes="Automated safety evaluation fall simulation test."
     )
-    return {"success": True, "event": evt.to_dict()}
+    return {"success": True, "event": event.to_dict()}
 
-# ==================== EMPLOYEES & BIOMETRICS API ====================
+# ==================== EMPLOYEE & BIOMETRIC ENROLLMENT API ====================
 
 @app.get("/api/employees")
 def get_employees(db: Session = Depends(get_db)):
@@ -330,8 +538,7 @@ def create_employee(
 ):
     existing = db.query(Employee).filter(Employee.employee_code == employee_code).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Employee code already exists")
-
+        raise HTTPException(status_code=400, detail="Employee code already registered")
     emp = Employee(
         employee_code=employee_code,
         name=name,
@@ -342,87 +549,53 @@ def create_employee(
     db.add(emp)
     db.commit()
     db.refresh(emp)
-    return {"success": True, "employee": emp.to_dict()}
+    return emp.to_dict()
 
-@app.post("/api/face/enroll")
-async def enroll_face(
+@app.post("/api/enrollment/upload")
+async def enroll_face_sample(
     employee_id: int = Form(...),
-    pose_angle: str = Form("front"),
     sample_index: int = Form(0),
-    image: UploadFile = File(...),
+    pose_angle: str = Form("front"),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    contents = await image.read()
-    res = enrollment_service.enroll_employee_sample(
-        db=db,
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    contents = await file.read()
+    result = enrollment_service.process_and_enroll_image_bytes(
+        image_bytes=contents,
         employee_id=employee_id,
-        image_bytes_or_mat=contents,
-        pose_angle=pose_angle,
-        sample_index=sample_index
+        db=db,
+        sample_index=sample_index,
+        pose_angle=pose_angle
     )
-    if not res.get("success"):
-        raise HTTPException(status_code=400, detail=res.get("error", "Enrollment failed"))
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Enrollment failed"))
     
-    # Refresh gallery in all active workers
+    # Trigger face recognizer sync in all workers
     for worker in pipeline_workers.values():
         worker.face_recognizer.sync_gallery(db)
 
-    return res
-
-@app.get("/api/face/status")
-def get_face_gallery_status(db: Session = Depends(get_db)):
-    total_profiles = db.query(FaceProfile).count()
-    enrolled_employees = db.query(Employee).join(FaceProfile).distinct().count()
-    total_employees = db.query(Employee).count()
-    
-    return {
-        "total_face_profiles": total_profiles,
-        "enrolled_employees": enrolled_employees,
-        "total_employees": total_employees,
-        "model_version": "cv_face_embedder_v1",
-        "embedding_dim": 128
-    }
-
-# ==================== SYSTEM & ANALYTICS API ====================
+    return result
 
 @app.get("/api/system/status")
-def get_system_status():
-    import psutil
-    metadata_path = config.models_dir / "metadata.json"
-    meta = {}
-    if metadata_path.exists():
-        import json
-        with open(metadata_path, "r") as f:
-            meta = json.load(f)
+def get_system_status(db: Session = Depends(get_db)):
+    """Returns platform health, inference engines, and camera telemetry."""
+    active_cams = sum(1 for w in pipeline_workers.values() if w.stream.is_online)
+    first_worker = next(iter(pipeline_workers.values()), None)
+    pose_engine = first_worker.pose_estimator.backend if first_worker else "yolo_pose"
+    classifier_loaded = first_worker.activity_classifier.is_loaded if first_worker else False
 
     return {
-        "status": "healthy",
-        "active_cameras": len(pipeline_workers),
-        "total_active_tracks": sum(w.stats.get("active_tracks", 0) for w in pipeline_workers.values()),
-        "cpu_usage_pct": psutil.cpu_percent(interval=None),
-        "memory_usage_pct": psutil.virtual_memory().percent,
-        "ml_model": meta.get("model_name", "RandomForestClassifier"),
-        "ml_accuracy": meta.get("metrics", {}).get("test_accuracy", 1.0),
-        "version": config.system.get("app", {}).get("version", "1.0.0")
-    }
-
-@app.get("/api/analytics/summary")
-def get_analytics_summary(db: Session = Depends(get_db)):
-    events = db.query(Event).all()
-    activity_counts = {"standing": 0, "sitting": 0, "working": 0, "falling": 0}
-    status_counts = {"pending_review": 0, "confirmed": 0, "rejected": 0}
-
-    for e in events:
-        act = e.activity.lower()
-        if act in activity_counts:
-            activity_counts[act] += 1
-        st = e.status.lower()
-        if st in status_counts:
-            status_counts[st] += 1
-
-    return {
-        "total_events": len(events),
-        "activity_distribution": activity_counts,
-        "status_distribution": status_counts,
-        "active_workers": len(pipeline_workers)
+        "status": "operational",
+        "cameras_online": active_cams,
+        "total_cameras": len(pipeline_workers),
+        "ai_workers_active": sum(1 for w in pipeline_workers.values() if w.ai_enabled),
+        "pose_engine": pose_engine,
+        "classifier_loaded": classifier_loaded,
+        "classifier_type": "Random Forest v1.0",
+        "embedder_type": "TorchVision Deep MobileNetV2 (128-d)",
+        "websocket_clients": len(active_websockets)
     }

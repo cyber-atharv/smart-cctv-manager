@@ -9,8 +9,8 @@
   <div class="stat-card">
     <div class="stat-icon" style="color: var(--primary);">🎥</div>
     <div class="stat-info">
-      <div class="stat-value">{{ stats.cameras_online }}</div>
-      <div class="stat-label">Active Cameras</div>
+      <div class="stat-value">{{ stats.cameras_online }} / {{ stats.total_cameras }}</div>
+      <div class="stat-label">Online Cameras</div>
     </div>
   </div>
 
@@ -26,7 +26,7 @@
     <div class="stat-icon" style="color: var(--warning);">⚡</div>
     <div class="stat-info">
       <div class="stat-value">{{ stats.total_events }}</div>
-      <div class="stat-label">Total Safety Events</div>
+      <div class="stat-label">Total Safety Incidents</div>
     </div>
   </div>
 
@@ -42,39 +42,115 @@
 <!-- Live CCTV Feeds Grid -->
 <div class="cctv-grid-section">
   <div class="section-header">
-    <div class="section-title">Live Vision AI Streams</div>
-    <a href="/cameras" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">Manage Fleet →</a>
+    <div>
+      <div class="section-title">Live Vision AI Streams</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Real-time optical frame feeds with decoupled YOLO detection, pose analysis, and safety classification.
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <a href="/cameras" class="btn btn-primary" style="font-size: 12px; padding: 6px 14px;">+ Connect Camera</a>
+      <a href="/cameras" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">Manage Fleet →</a>
+    </div>
   </div>
 
-  <div class="cameras-container">
-    {% for cam in cameras[:2] %}
-    <div class="camera-card">
+  <div class="cameras-container" id="liveCamerasGrid">
+    {% set active_cams = cameras|selectattr('is_online', 'equalto', true)|list %}
+    {% if cameras|length == 0 %}
+    <!-- Empty State: No Cameras Added -->
+    <div class="no-camera-banner">
+      <div class="no-cam-icon">📹</div>
+      <div class="no-cam-title">NO LIVE CAMERAS CONNECTED</div>
+      <div class="no-cam-desc">
+        Connect your laptop webcam, mobile phone (DroidCam / IP Webcam), or RTSP IP camera to begin live AI safety monitoring.
+      </div>
+      <div class="no-cam-actions">
+        <a href="/cameras" class="btn btn-primary">+ Connect First Camera</a>
+        <button class="btn btn-outline" onclick="quickConnectWebcam()">🔍 Auto-Detect Local Webcam</button>
+      </div>
+    </div>
+    {% else %}
+    {% for cam in cameras %}
+    <div class="camera-card {% if not cam.is_online %}cam-offline-card{% endif %}" id="card-{{ cam.id }}">
       <div class="camera-header">
         <div class="camera-title">
           <span class="cam-badge">{{ cam.id }}</span>
-          <span>{{ cam.name }}</span>
+          <span class="cam-name">{{ cam.name }}</span>
         </div>
-        <div style="font-size: 11px; color: var(--text-dim);">{{ cam.location }}</div>
+        <div class="cam-header-tags">
+          {% if cam.is_demo %}
+            <span class="badge badge-demo">DEMO / SYNTHETIC</span>
+          {% elif cam.is_online %}
+            <span class="badge badge-live"><span class="pulsing-dot-green"></span> LIVE</span>
+          {% else %}
+            <span class="badge badge-offline">⚠ OFFLINE</span>
+          {% endif %}
+
+          <span class="badge {% if cam.ai_enabled %}badge-ai-active{% else %}badge-ai-stopped{% endif %}" id="ai-tag-{{ cam.id }}">
+            {% if cam.ai_enabled %}● AI ACTIVE{% else %}○ AI STOPPED{% endif %}
+          </span>
+        </div>
       </div>
 
       <div class="camera-view">
-        <img class="camera-img" src="/api/cameras/{{ cam.id }}/stream" alt="Live Feed for {{ cam.id }}" loading="lazy">
+        <img class="camera-img" id="stream-{{ cam.id }}" src="/api/cameras/{{ cam.id }}/stream?mode=ai" alt="Live Feed for {{ cam.id }}">
+        
+        <!-- Live Quick Overlay Controls -->
+        <div class="camera-controls-overlay">
+          <button class="ctrl-btn" onclick="toggleCameraAI('{{ cam.id }}')" title="Toggle AI Vision Analysis">
+            ⚡ <span id="btn-text-ai-{{ cam.id }}">{% if cam.ai_enabled %}Pause AI{% else %}Start AI{% endif %}</span>
+          </button>
+          <button class="ctrl-btn" onclick="toggleStreamMode('{{ cam.id }}')" title="Toggle Raw vs AI Video View">
+            👁 <span id="btn-text-mode-{{ cam.id }}">Raw View</span>
+          </button>
+          {% if not cam.is_online and not cam.is_demo %}
+          <button class="ctrl-btn btn-recon" onclick="reconnectCamera('{{ cam.id }}')" title="Reconnect Stream">
+            🔄 Reconnect
+          </button>
+          {% endif %}
+        </div>
       </div>
 
       <div class="camera-footer">
-        <div>Resolution: <strong>1280x720</strong></div>
-        <div>Target FPS: <strong>{{ cam.fps }} FPS</strong></div>
-        <div>Type: <strong style="text-transform: capitalize;">{{ cam.source_type }}</strong></div>
+        <div>People: <strong id="people-count-{{ cam.id }}">{{ cam.active_tracks_count or 0 }}</strong></div>
+        <div>FPS: <strong id="fps-val-{{ cam.id }}">{{ cam.measured_fps or cam.fps }} FPS</strong></div>
+        <div>Res: <strong>{{ cam.resolution }}</strong></div>
+        <div>Source: <strong style="text-transform: uppercase;">{{ cam.source_type }}</strong></div>
       </div>
     </div>
     {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- People Intelligence Quick Monitor -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 12px;">
+    <div>
+      <div class="section-title">🧠 Real-Time People Intelligence Feed</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Live detection subjects, biomechanical posture angles, and activity classifications.
+      </div>
+    </div>
+    <a href="/people-intelligence" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">Full Intelligence Hub →</a>
+  </div>
+
+  <div id="peopleIntelligenceGrid" class="people-intel-grid">
+    <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 20px;">
+      Scanning active camera streams for subjects...
+    </div>
   </div>
 </div>
 
 <!-- Recent Events Table -->
 <div class="card">
   <div class="section-header" style="margin-bottom: 16px;">
-    <div class="section-title">Recent Safety Incidents & Verification Log</div>
+    <div>
+      <div class="section-title">Recent Safety Incidents & Verification Log</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Temporal state machine fall verifications and operator review queue.
+      </div>
+    </div>
     <a href="/events" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">All Incidents →</a>
   </div>
 
