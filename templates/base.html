@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Smart CCTV AI Safety Platform{% endblock %}</title>
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Core UI Stylesheet -->
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="brand-header">
+      <div class="brand-icon">📹</div>
+      <div>
+        <div class="brand-title">CCTV AI Safety</div>
+        <div class="brand-subtitle">Smart Vision OS</div>
+      </div>
+    </div>
+
+    <ul class="nav-links">
+      <li class="nav-item {% if request.url.path == '/' %}active{% endif %}">
+        <a href="/"><span>📊</span> Dashboard</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/cameras' %}active{% endif %}">
+        <a href="/cameras"><span>🎥</span> Live Cameras</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/events' %}active{% endif %}">
+        <a href="/events"><span>🚨</span> Safety Events</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/employees' %}active{% endif %}">
+        <a href="/employees"><span>👥</span> Employees</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/enrollment' %}active{% endif %}">
+        <a href="/enrollment"><span>🆔</span> Face Enrollment</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/analytics' %}active{% endif %}">
+        <a href="/analytics"><span>📈</span> ML Analytics</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/settings' %}active{% endif %}">
+        <a href="/settings"><span>⚙️</span> Settings</a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div>AI Worker: <strong>Active (15 FPS)</strong></div>
+      <div style="margin-top: 4px;">Classifier: <strong>Random Forest v1.0</strong></div>
+    </div>
+  </aside>
+
+  <!-- Main Wrapper -->
+  <div class="main-wrapper">
+    <!-- Top Navigation -->
+    <header class="top-navbar">
+      <div class="page-title-badge">
+        <h1 class="page-title">{% block page_title %}Dashboard{% endblock %}</h1>
+        <span class="live-indicator"><span class="pulsing-dot"></span> System Live</span>
+      </div>
+
+      <div class="top-actions">
+        <button class="btn btn-danger" onclick="triggerSimulatedFall()" title="Trigger a test fall scenario for evaluation">
+          ⚡ Test Fall Simulation
+        </button>
+      </div>
+    </header>
+
+    <!-- Page Content -->
+    <main class="dashboard-content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Realtime Incident Alert Modal -->
+  <div class="alert-modal-backdrop" id="safetyAlertModal">
+    <div class="alert-modal">
+      <div class="alert-modal-header">
+        <div style="display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px;">
+          <span>⚠️</span> CRITICAL SAFETY ALERT: FALL DETECTED
+        </div>
+        <button class="btn btn-outline" style="padding: 2px 8px; color: #fff; border-color: rgba(255,255,255,0.3);" onclick="closeAlertModal()">✕</button>
+      </div>
+
+      <div class="alert-modal-body">
+        <img id="modalSnapshot" class="alert-snapshot-preview" src="" alt="Incident Snapshot">
+        
+        <div class="alert-details-grid">
+          <div class="alert-detail-item">
+            <div class="label">Event ID</div>
+            <div class="value" id="modalEventId">EVT-0001</div>
+          </div>
+          <div class="alert-detail-item">
+            <div class="label">Camera Source</div>
+            <div class="value" id="modalCamera">CAM-01</div>
+          </div>
+          <div class="alert-detail-item">
+            <div class="label">Subject Identity</div>
+            <div class="value" id="modalEmployee"><span class="badge badge-unknown">Unknown</span></div>
+          </div>
+          <div class="alert-detail-item">
+            <div class="label">Detection Activity</div>
+            <div class="value" id="modalActivity" style="color: var(--danger);">FALLING (94%)</div>
+          </div>
+          <div class="alert-detail-item">
+            <div class="label">Track Details</div>
+            <div class="value" id="modalTrack">Track #7</div>
+          </div>
+          <div class="alert-detail-item">
+            <div class="label">Incident Timestamp</div>
+            <div class="value" id="modalTimestamp">--:--:--</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-modal-footer">
+        <button class="btn btn-outline" onclick="reviewCurrentEvent('rejected')">Reject / False Alarm</button>
+        <button class="btn btn-primary" onclick="reviewCurrentEvent('confirmed')">✓ Confirm Fall Incident</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Application Scripts -->
+  <script src="/static/js/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

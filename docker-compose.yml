@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  cctv-ai-platform:
+    build: .
+    container_name: smart_cctv_ai_platform
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+      - ./models:/app/models
+      - ./config:/app/config
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=sqlite:///storage/cctv_safety.db
+      - HOST=0.0.0.0
+      - PORT=8000

@@ -1,0 +1,70 @@
+{
+  "model_name": "fall_detection_random_forest",
+  "version": "1.1-realistic",
+  "dataset_type": "Biomechanical Realistic Multi-Subject Benchmark with Hard Negatives",
+  "n_subjects": 30,
+  "split_method": "Group-Aware Subject Split (24 Train / 6 Test)",
+  "algorithm": "RandomForestClassifier",
+  "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "random_state": 42
+  },
+  "classes": [
+    "falling",
+    "sitting",
+    "standing",
+    "working"
+  ],
+  "features": [
+    "body_angle",
+    "shoulder_angle",
+    "hip_angle",
+    "knee_angle_left",
+    "knee_angle_right",
+    "head_angle",
+    "body_height",
+    "body_width",
+    "height_width_ratio",
+    "vertical_velocity",
+    "horizontal_velocity",
+    "movement_speed",
+    "bbox_area",
+    "landmark_visibility",
+    "hip_center_y",
+    "head_to_ankle_y_diff"
+  ],
+  "metrics": {
+    "test_accuracy": 0.9942,
+    "decision_tree_accuracy": 0.98,
+    "per_class_f1": {
+      "falling": 0.9888,
+      "sitting": 0.9968,
+      "standing": 0.9983,
+      "working": 0.9915
+    },
+    "fall_recall": 1.0,
+    "fall_precision": 0.9778,
+    "fall_specificity": 0.9961,
+    "raw_frame_false_positives": 4,
+    "raw_frame_false_negatives": 0
+  },
+  "feature_importances": {
+    "body_angle": 0.1504,
+    "shoulder_angle": 0.0253,
+    "hip_angle": 0.0063,
+    "knee_angle_left": 0.1454,
+    "knee_angle_right": 0.1157,
+    "head_angle": 0.1018,
+    "body_height": 0.0589,
+    "body_width": 0.0655,
+    "height_width_ratio": 0.1253,
+    "vertical_velocity": 0.0094,
+    "horizontal_velocity": 0.0071,
+    "movement_speed": 0.0513,
+    "bbox_area": 0.0022,
+    "landmark_visibility": 0.0053,
+    "hip_center_y": 0.0382,
+    "head_to_ankle_y_diff": 0.0919
+  }
+}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Live Cameras | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}CCTV Fleet & Stream Management{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <div class="section-title">Connected Camera Sources ({{ cameras|length }})</div>
+</div>
+
+<div class="cameras-container">
+  {% for cam in cameras %}
+  <div class="camera-card">
+    <div class="camera-header">
+      <div class="camera-title">
+        <span class="cam-badge">{{ cam.id }}</span>
+        <span>{{ cam.name }}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="live-indicator" style="font-size: 10px; padding: 2px 8px;">ACTIVE</span>
+      </div>
+    </div>
+
+    <div class="camera-view">
+      <img class="camera-img" src="/api/cameras/{{ cam.id }}/stream" alt="Live Feed for {{ cam.id }}">
+    </div>
+
+    <div class="camera-footer">
+      <div>Location: <strong>{{ cam.location }}</strong></div>
+      <div>Source: <strong style="text-transform: uppercase;">{{ cam.source_type }}</strong></div>
+      <div>Target: <strong>{{ cam.fps }} FPS</strong></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

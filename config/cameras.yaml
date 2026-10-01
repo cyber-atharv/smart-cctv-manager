@@ -1,0 +1,31 @@
+# Configured Cameras / Video Sources
+cameras:
+  - id: "CAM-01"
+    name: "Main Hallway - North"
+    location: "Building A - Floor 1"
+    source_type: "synthetic" # 'webcam', 'file', 'rtsp', 'synthetic'
+    source_uri: "0"
+    fps: 15
+    enabled: true
+    resolution: [1280, 720]
+    description: "North entrance hallway overlooking main lobby"
+
+  - id: "CAM-02"
+    name: "Warehouse Work Area"
+    location: "Logistics Hub - Zone B"
+    source_type: "synthetic"
+    source_uri: "sample_fall.mp4"
+    fps: 15
+    enabled: true
+    resolution: [1280, 720]
+    description: "High-risk warehouse loading and assembly zone"
+
+  - id: "CAM-03"
+    name: "Cafeteria & Lounge"
+    location: "Building A - Floor 2"
+    source_type: "synthetic"
+    source_uri: "sample_sitting.mp4"
+    fps: 15
+    enabled: true
+    resolution: [1280, 720]
+    description: "Employee break room and dining area"

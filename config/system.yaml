@@ -1,0 +1,34 @@
+# System Configuration for Smart CCTV AI Platform
+app:
+  name: "Smart CCTV AI Safety & Identification Platform"
+  version: "1.0.0"
+  env: "development"
+  debug: true
+  host: "127.0.0.1"
+  port: 8000
+
+storage:
+  base_dir: "storage"
+  snapshots_dir: "storage/snapshots"
+  clips_dir: "storage/clips"
+  face_db_dir: "storage/face_db"
+  models_dir: "models"
+  data_dir: "data"
+
+database:
+  url: "sqlite:///storage/cctv_safety.db"
+
+processing:
+  target_fps: 15
+  frame_skip: 1
+  buffer_capacity: 150 # 10 seconds at 15 fps
+  enable_cuda: false
+  worker_threads: 2
+
+pipeline:
+  detection_enabled: true
+  tracking_enabled: true
+  pose_enabled: true
+  activity_classification_enabled: true
+  face_recognition_enabled: true
+  event_recording_enabled: true

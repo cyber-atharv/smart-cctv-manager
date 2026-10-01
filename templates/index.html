@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}Facility Operations & Safety Dashboard{% endblock %}
+
+{% block content %}
+<!-- Statistics Row -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--primary);">🎥</div>
+    <div class="stat-info">
+      <div class="stat-value">{{ stats.cameras_online }}</div>
+      <div class="stat-label">Active Cameras</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--secondary);">👥</div>
+    <div class="stat-info">
+      <div class="stat-value">{{ stats.employees_enrolled }}</div>
+      <div class="stat-label">Enrolled Employees</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--warning);">⚡</div>
+    <div class="stat-info">
+      <div class="stat-value">{{ stats.total_events }}</div>
+      <div class="stat-label">Total Safety Events</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--danger);">🚨</div>
+    <div class="stat-info">
+      <div class="stat-value">{{ stats.confirmed_falls }}</div>
+      <div class="stat-label">Confirmed Falls</div>
+    </div>
+  </div>
+</div>
+
+<!-- Live CCTV Feeds Grid -->
+<div class="cctv-grid-section">
+  <div class="section-header">
+    <div class="section-title">Live Vision AI Streams</div>
+    <a href="/cameras" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">Manage Fleet →</a>
+  </div>
+
+  <div class="cameras-container">
+    {% for cam in cameras[:2] %}
+    <div class="camera-card">
+      <div class="camera-header">
+        <div class="camera-title">
+          <span class="cam-badge">{{ cam.id }}</span>
+          <span>{{ cam.name }}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim);">{{ cam.location }}</div>
+      </div>
+
+      <div class="camera-view">
+        <img class="camera-img" src="/api/cameras/{{ cam.id }}/stream" alt="Live Feed for {{ cam.id }}" loading="lazy">
+      </div>
+
+      <div class="camera-footer">
+        <div>Resolution: <strong>1280x720</strong></div>
+        <div>Target FPS: <strong>{{ cam.fps }} FPS</strong></div>
+        <div>Type: <strong style="text-transform: capitalize;">{{ cam.source_type }}</strong></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Recent Events Table -->
+<div class="card">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div class="section-title">Recent Safety Incidents & Verification Log</div>
+    <a href="/events" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">All Incidents →</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="cctv-table">
+      <thead>
+        <tr>
+          <th>Event ID</th>
+          <th>Camera</th>
+          <th>Subject / Employee</th>
+          <th>Classified Activity</th>
+          <th>Timestamp</th>
+          <th>Verification Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="recentEventsTableBody">
+        {% for evt in recent_events %}
+        <tr>
+          <td><strong>{{ evt.id }}</strong></td>
+          <td>{{ evt.camera_name }}</td>
+          <td>
+            {% if evt.identity_status == 'recognized' and evt.employee_code %}
+              <span class="badge badge-success">{{ evt.employee_code }} ({{ evt.employee_name }})</span>
+            {% else %}
+              <span class="badge badge-unknown">Unknown</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if evt.activity == 'falling' %}
+              <span class="badge badge-danger">{{ evt.activity|upper }} ({{ (evt.activity_confidence * 100)|int }}%)</span>
+            {% else %}
+              <span class="badge badge-info">{{ evt.activity|upper }} ({{ (evt.activity_confidence * 100)|int }}%)</span>
+            {% endif %}
+          </td>
+          <td>{{ evt.timestamp }}</td>
+          <td>
+            {% if evt.status == 'confirmed' %}
+              <span class="badge badge-danger">Confirmed</span>
+            {% elif evt.status == 'rejected' %}
+              <span class="badge badge-unknown">Rejected</span>
+            {% else %}
+              <span class="badge badge-warning">Pending Review</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/events" class="btn btn-outline" style="padding: 4px 10px; font-size: 11px;">Review</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 30px;">
+            No safety incidents logged yet. The vision AI is actively monitoring camera streams.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

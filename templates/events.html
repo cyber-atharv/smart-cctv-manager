@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Safety Incidents | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}Safety Incidents & Temporal Verification Log{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="section-header" style="margin-bottom: 20px;">
+    <div>
+      <div class="section-title">Incident Audit Trail</div>
+      <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        Correlated events containing Track ID, Temporal Verification Evidence, Video Clips, and Employee Identification.
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="cctv-table">
+      <thead>
+        <tr>
+          <th>Event ID</th>
+          <th>Camera Source</th>
+          <th>Track ID</th>
+          <th>Subject / Employee</th>
+          <th>Activity</th>
+          <th>Verification Status</th>
+          <th>Timestamp</th>
+          <th>Evidence</th>
+          <th>Review Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for evt in events %}
+        <tr>
+          <td><strong>{{ evt.id }}</strong></td>
+          <td>{{ evt.camera_name }}</td>
+          <td><span class="badge badge-info">Track #{{ evt.track_id or 'N/A' }}</span></td>
+          <td>
+            {% if evt.identity_status == 'recognized' and evt.employee_code %}
+              <span class="badge badge-success">{{ evt.employee_code }} ({{ evt.employee_name }})</span>
+            {% else %}
+              <span class="badge badge-unknown">Unknown Person</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if evt.activity == 'falling' %}
+              <span class="badge badge-danger">FALL ({{ (evt.activity_confidence * 100)|int }}%)</span>
+            {% else %}
+              <span class="badge badge-info">{{ evt.activity|upper }} ({{ (evt.activity_confidence * 100)|int }}%)</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if evt.status == 'confirmed' %}
+              <span class="badge badge-danger">Confirmed Fall</span>
+            {% elif evt.status == 'rejected' %}
+              <span class="badge badge-unknown">False Alarm</span>
+            {% else %}
+              <span class="badge badge-warning">Pending Review</span>
+            {% endif %}
+          </td>
+          <td>{{ evt.timestamp }}</td>
+          <td>
+            {% if evt.snapshot_path %}
+              <a href="{{ evt.snapshot_path }}" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 11px;">Snapshot</a>
+            {% endif %}
+            {% if evt.clip_path %}
+              <a href="{{ evt.clip_path }}" target="_blank" class="btn btn-primary" style="padding: 2px 8px; font-size: 11px; margin-left: 4px;">Clip</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if evt.status == 'pending_review' %}
+              <div style="display: flex; gap: 4px;">
+                <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="quickReview('{{ evt.id }}', 'confirmed')">Confirm</button>
+                <button class="btn btn-outline" style="padding: 4px 8px; font-size: 11px;" onclick="quickReview('{{ evt.id }}', 'rejected')">Reject</button>
+              </div>
+            {% else %}
+              <span style="font-size: 12px; color: var(--text-dim); text-transform: capitalize;">{{ evt.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 30px;">
+            No safety incidents logged. Use "Test Fall Simulation" at the top to simulate an incident.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function quickReview(eventId, decision) {
+  try {
+    const res = await fetch(`/api/events/${eventId}/${decision}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.reload();
+    }
+  } catch (err) {
+    alert("Error updating review.");
+  }
+}
+</script>
+{% endblock %}

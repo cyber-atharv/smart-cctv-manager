@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Employees | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}Employee Directory & Biometric Profiles{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="section-header" style="margin-bottom: 20px;">
+    <div>
+      <div class="section-title">Enrolled Personnel ({{ employees|length }})</div>
+      <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        Registered employee identities mapped into the biometric gallery for live CCTV identification.
+      </div>
+    </div>
+    <a href="/enrollment" class="btn btn-primary">+ Enroll New Face Profile</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="cctv-table">
+      <thead>
+        <tr>
+          <th>Employee Code</th>
+          <th>Full Name</th>
+          <th>Department</th>
+          <th>Biometric Samples</th>
+          <th>Status</th>
+          <th>Created Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr>
+          <td><strong style="color: var(--primary);">{{ emp.employee_code }}</strong></td>
+          <td><strong>{{ emp.name }}</strong></td>
+          <td>{{ emp.department }}</td>
+          <td>
+            {% if emp.face_profile_count > 0 %}
+              <span class="badge badge-success">{{ emp.face_profile_count }} Profiles Active</span>
+            {% else %}
+              <span class="badge badge-warning">No Biometric Samples</span>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-info">{{ emp.status }}</span></td>
+          <td>{{ emp.created_at[:10] if emp.created_at else 'N/A' }}</td>
+          <td>
+            <a href="/enrollment" class="btn btn-outline" style="padding: 4px 10px; font-size: 11px;">Enroll Samples</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

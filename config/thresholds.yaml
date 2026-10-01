@@ -1,0 +1,50 @@
+# Thresholds and Hyperparameters for Vision, Pose, Activity & Fall Detection
+
+detection:
+  confidence_threshold: 0.45
+  nms_iou_threshold: 0.45
+  target_classes: [0] # 0 = person in COCO
+
+tracking:
+  max_age_frames: 30
+  min_hits: 3
+  iou_threshold: 0.3
+  distance_metric: "cosine_and_iou"
+
+pose:
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  model_complexity: 1 # 0=Lite, 1=Full, 2=Heavy
+
+features:
+  vertical_velocity_window: 5
+  orientation_smoothing: 3
+  aspect_ratio_fall_threshold: 0.85
+
+activity:
+  confidence_threshold: 0.60
+  classes:
+    - "standing"
+    - "sitting"
+    - "working"
+    - "falling"
+
+fall_verification:
+  confidence_threshold: 0.70
+  verification_window_frames: 12 # frames to confirm fall state machine
+  floor_persistence_frames: 15   # person stays low/horizontal on floor
+  angle_fall_threshold_deg: 50.0 # torso angle deviation from vertical
+  rapid_descent_threshold: 0.08  # normalized vertical speed downward
+  debounce_seconds: 5.0          # prevent duplicate triggers for same track
+
+face_recognition:
+  detector_confidence: 0.60
+  similarity_metric: "cosine"
+  match_threshold: 0.58          # cosine similarity threshold (higher = stricter)
+  min_face_size_pixels: 40
+  max_gallery_samples_per_person: 5
+
+recording:
+  pre_event_seconds: 5
+  post_event_seconds: 10
+  codec: "avc1" # or 'mp4v'

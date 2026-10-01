@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Settings | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}System Hyperparameters & Thresholds{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="section-title" style="margin-bottom: 20px;">Safety & Vision Configuration (YAML-Backed)</div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div>
+      <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--primary);">Fall Verification Parameters</h3>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="alert-detail-item">
+          <div class="label">Fall Confidence Threshold</div>
+          <div class="value">{{ thresholds_config.fall_verification.confidence_threshold }}</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Verification Window Frames</div>
+          <div class="value">{{ thresholds_config.fall_verification.verification_window_frames }} frames</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Floor Persistence Requirement</div>
+          <div class="value">{{ thresholds_config.fall_verification.floor_persistence_frames }} frames</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Torso Angle Threshold</div>
+          <div class="value">{{ thresholds_config.fall_verification.angle_fall_threshold_deg }}° from vertical</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--secondary);">Biometric & Video Recording</h3>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="alert-detail-item">
+          <div class="label">Face Match Cosine Threshold</div>
+          <div class="value">{{ thresholds_config.face_recognition.match_threshold }}</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Pre-Event Clip Buffer</div>
+          <div class="value">{{ thresholds_config.recording.pre_event_seconds }} seconds</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Post-Event Clip Buffer</div>
+          <div class="value">{{ thresholds_config.recording.post_event_seconds }} seconds</div>
+        </div>
+        <div class="alert-detail-item">
+          <div class="label">Database Location</div>
+          <div class="value">{{ system_config.database.url }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

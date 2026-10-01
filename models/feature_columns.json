@@ -1,0 +1,18 @@
+[
+  "body_angle",
+  "shoulder_angle",
+  "hip_angle",
+  "knee_angle_left",
+  "knee_angle_right",
+  "head_angle",
+  "body_height",
+  "body_width",
+  "height_width_ratio",
+  "vertical_velocity",
+  "horizontal_velocity",
+  "movement_speed",
+  "bbox_area",
+  "landmark_visibility",
+  "hip_center_y",
+  "head_to_ankle_y_diff"
+]

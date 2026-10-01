@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Face Enrollment | Smart CCTV AI Safety Platform{% endblock %}
+{% block page_title %}Biometric Face Registration Wizard{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="section-header" style="margin-bottom: 24px;">
+    <div>
+      <div class="section-title">Multi-Angle Employee Face Profile Registration</div>
+      <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        Capture calibrated facial profiles (Front, Left, Right) to extract 128-d L2-normalized embeddings for live CCTV recognition.
+      </div>
+    </div>
+  </div>
+
+  <div class="enrollment-grid">
+    <!-- Left Column: Form & Stepper -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Select Employee Target:</label>
+        <select id="enrollEmployeeSelect" class="btn btn-outline" style="width: 100%; padding: 10px; font-size: 14px; background: rgba(0,0,0,0.3);">
+          {% for emp in employees %}
+          <option value="{{ emp.id }}">{{ emp.employee_code }} - {{ emp.name }} ({{ emp.department }})</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Capture Angle Workflow:</label>
+        <div class="pose-stepper">
+          <div class="pose-step active" onclick="selectPoseStep('front', 0)">
+            <strong>Step 1</strong><br>Front View
+          </div>
+          <div class="pose-step" onclick="selectPoseStep('left', 1)">
+            <strong>Step 2</strong><br>Left Angle (30°)
+          </div>
+          <div class="pose-step" onclick="selectPoseStep('right', 2)">
+            <strong>Step 3</strong><br>Right Angle (30°)
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 8px;">
+        <button class="btn btn-primary" style="flex: 1;" onclick="startEnrollmentCamera()">
+          📹 Start Live Webcam
+        </button>
+        <button class="btn btn-danger" style="flex: 1;" onclick="captureAndEnrollSample()">
+          ⚡ Capture & Save Profile
+        </button>
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Or Upload Image File:</label>
+        <input type="file" id="enrollmentFileInput" accept="image/*" class="btn btn-outline" style="width: 100%;">
+      </div>
+
+      <div id="enrollmentStatusMsg" class="alert-detail-item" style="margin-top: 10px;">
+        <div class="label">Registration Status</div>
+        <div class="value">Ready. Select employee and start camera to begin enrollment.</div>
+      </div>
+    </div>
+
+    <!-- Right Column: Camera Viewport -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="capture-box">
+        <video id="enrollmentVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; display: none;"></video>
+        <div id="cameraPlaceholder" style="text-align: center; color: var(--text-dim);">
+          <div style="font-size: 36px; margin-bottom: 8px;">📷</div>
+          <div>Click "Start Live Webcam" or choose an image file to begin.</div>
+        </div>
+      </div>
+      <div style="font-size: 12px; color: var(--text-dim); text-align: center;">
+        ℹ️ Biometric Rule: Images are processed to extract mathematical vectors. Raw images are not retained unnecessarily.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/enrollment.js"></script>
+{% endblock %}

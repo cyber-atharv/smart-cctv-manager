@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Environment & IDE
+.env
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project Storage & Runtime Data
+storage/*.db
+storage/*.db-journal
+storage/clips/*
+!storage/clips/.gitkeep
+storage/snapshots/*
+!storage/snapshots/.gitkeep
+storage/face_db/*
+!storage/face_db/.gitkeep
+
+# Large pre-trained base models (auto-downloaded by Ultralytics on first run)
+*.pt
