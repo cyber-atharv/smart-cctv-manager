@@ -1,0 +1,637 @@
+{% extends "base.html" %}
+
+{% block title %}Zone & Multi-Domain AI Analytics | Smart CCTV AI Platform{% endblock %}
+{% block page_title %}Zone & Multi-Domain Vision AI Analytics{% endblock %}
+
+{% block content %}
+<!-- Top Action Bar -->
+<div class="fleet-action-bar">
+  <div>
+    <h2 style="font-size: 18px; font-weight: 700;">Multi-Domain Vision Intelligence Hub</h2>
+    <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+      Hospitality Table Occupancy, Queue Wait Times, PPE Safety Compliance, Smart Parking & Security Zones.
+    </p>
+  </div>
+  
+  <div class="fleet-actions-group">
+    <button class="btn btn-primary" onclick="openAddZoneModal()">
+      + Define New Zone / ROI
+    </button>
+    <button class="btn btn-outline" onclick="fetchMultiDomainData()">
+      🔄 Refresh Telemetry
+    </button>
+  </div>
+</div>
+
+<!-- Quick Metrics Overview -->
+<div class="stats-grid" style="margin-top: 20px;">
+  <div class="stat-card">
+    <div class="stat-icon" style="color: #c864ff;">🍽</div>
+    <div class="stat-info">
+      <div class="stat-value" id="kpi-tables">-- / --</div>
+      <div class="stat-label">Tables Occupied / Total</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="kpi-turnovers">Turnovers: 0 | Waiter Visits: 0</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--warning);">👥</div>
+    <div class="stat-info">
+      <div class="stat-value" id="kpi-queue">0</div>
+      <div class="stat-label">Queue Waiting Count</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="kpi-wait-time">Est. Wait: ~0.0 min</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--success);">🦺</div>
+    <div class="stat-info">
+      <div class="stat-value" id="kpi-ppe">100%</div>
+      <div class="stat-label">PPE Safety Compliance</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="kpi-ppe-violations">0 Violations Active</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="color: var(--primary);">🚗</div>
+    <div class="stat-info">
+      <div class="stat-value" id="kpi-parking">-- / --</div>
+      <div class="stat-label">Parking Available / Total</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="kpi-parking-rate">0% Occupied</div>
+    </div>
+  </div>
+</div>
+
+<!-- Domain Navigation Tabs -->
+<div class="source-tabs" style="margin-top: 24px; margin-bottom: 20px;">
+  <button type="button" class="source-tab active" onclick="switchDomainTab('all')">🌐 All Domains</button>
+  <button type="button" class="source-tab" onclick="switchDomainTab('hospitality')">🍽 Hospitality & Dining</button>
+  <button type="button" class="source-tab" onclick="switchDomainTab('queue')">👥 Queues & Waiting Times</button>
+  <button type="button" class="source-tab" onclick="switchDomainTab('ppe')">🦺 Workplace PPE Safety</button>
+  <button type="button" class="source-tab" onclick="switchDomainTab('parking')">🚗 Smart Parking</button>
+  <button type="button" class="source-tab" onclick="switchDomainTab('security')">🚨 Restricted & Loitering</button>
+</div>
+
+<!-- 1. HOSPITALITY & TABLE OCCUPANCY SECTION -->
+<div class="card domain-section" id="section-hospitality" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div>
+      <div class="section-title">🍽 Hospitality Table Occupancy & Service Monitoring</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Real-time table seating status, occupancy duration, meal turnover counts, and waiter service visits.
+      </div>
+    </div>
+    <span class="badge badge-info" id="badge-hospitality-summary">0 Active Tables</span>
+  </div>
+
+  <div class="people-intel-grid" id="tablesGrid">
+    <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">
+      Loading table zones...
+    </div>
+  </div>
+</div>
+
+<!-- 2. QUEUE & WAITING TIME SECTION -->
+<div class="card domain-section" id="section-queue" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div>
+      <div class="section-title">👥 Queue Length & Estimated Waiting Time Analytics</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Headcounts in checkout/service counter queues, real-time wait estimation, and congestion alerts.
+      </div>
+    </div>
+    <span class="badge badge-warning" id="badge-queue-summary">0 In Queue</span>
+  </div>
+
+  <div class="people-intel-grid" id="queuesGrid">
+    <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">
+      Loading queue zones...
+    </div>
+  </div>
+</div>
+
+<!-- 3. WORKPLACE SAFETY & PPE COMPLIANCE SECTION -->
+<div class="card domain-section" id="section-ppe" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div>
+      <div class="section-title">🦺 Workplace Safety: Hard Hat & High-Vis Vest PPE Compliance</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Automated safety inspection for industrial helmets and reflective vests per detected person track.
+      </div>
+    </div>
+    <span class="badge badge-success" id="badge-ppe-rate">100% Compliant</span>
+  </div>
+
+  <div id="ppeWorkersList" style="display: flex; flex-direction: column; gap: 10px;">
+    <div style="text-align: center; color: var(--text-dim); padding: 24px;">
+      Scanning active workers for PPE gear...
+    </div>
+  </div>
+</div>
+
+<!-- 4. SMART PARKING SPACE DETECTION SECTION -->
+<div class="card domain-section" id="section-parking" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div>
+      <div class="section-title">🚗 Smart Parking Space Availability</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Monitors designated parking stalls and loading bays for vehicle/occupancy presence.
+      </div>
+    </div>
+    <span class="badge badge-info" id="badge-parking-summary">0 / 0 Available</span>
+  </div>
+
+  <div class="people-intel-grid" id="parkingGrid">
+    <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">
+      Loading parking zones...
+    </div>
+  </div>
+</div>
+
+<!-- 5. SECURITY RESTRICTED & LOITERING ANOMALY SECTION -->
+<div class="card domain-section" id="section-security" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 16px;">
+    <div>
+      <div class="section-title">🚨 Restricted Perimeter Intrusion & Loitering Anomaly Alerts</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Real-time security violations: unauthorized entry into hazard zones and excessive dwell times.
+      </div>
+    </div>
+    <span class="badge badge-danger" id="badge-security-alerts">0 Alerts</span>
+  </div>
+
+  <div class="people-intel-grid" id="securityGrid">
+    <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">
+      Loading perimeter security zones...
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ADD ZONE MODAL ==================== -->
+<div class="alert-modal-backdrop" id="addZoneModal">
+  <div class="alert-modal" style="max-width: 600px;">
+    <div class="alert-modal-header">
+      <div style="font-weight: 700; font-size: 16px;">🎯 Define New ROI Zone / Virtual Polygon</div>
+      <button class="btn btn-outline" style="padding: 2px 8px; color: #fff;" onclick="closeAddZoneModal()">✕</button>
+    </div>
+
+    <div class="alert-modal-body" style="display: block; padding: 24px;">
+      <form id="addZoneForm" onsubmit="event.preventDefault(); submitAddZone();">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <label class="form-label">Target Camera</label>
+            <select id="zoneCamId" class="form-control" required>
+              {% for cam in cameras %}
+              <option value="{{ cam.id }}">{{ cam.id }} - {{ cam.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Zone Domain Type</label>
+            <select id="zoneType" class="form-control" required onchange="onZoneTypeChange()">
+              <option value="table">🍽 Hospitality: Dining Table</option>
+              <option value="queue">👥 Retail/Clinic: Queue Line</option>
+              <option value="ppe">🦺 Safety: Hazard PPE Zone</option>
+              <option value="parking">🚗 Parking: Vehicle Bay</option>
+              <option value="restricted">🚨 Security: Restricted Perimeter</option>
+              <option value="loitering">⏱ Anomaly: Loitering Zone</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px;">
+          <div>
+            <label class="form-label">Zone ID</label>
+            <input type="text" id="zoneId" class="form-control" placeholder="e.g. TABLE-05" required>
+          </div>
+          <div>
+            <label class="form-label">Zone Name / Label</label>
+            <input type="text" id="zoneName" class="form-control" placeholder="e.g. Patio Table #5" required>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <label class="form-label">Preset Quadrant / Polygon</label>
+          <select id="zonePreset" class="form-control" onchange="applyZonePreset()">
+            <option value="left">Left Region (0.05, 0.25 to 0.45, 0.85)</option>
+            <option value="right">Right Region (0.55, 0.25 to 0.95, 0.85)</option>
+            <option value="center">Center Area (0.30, 0.30 to 0.70, 0.80)</option>
+            <option value="top_right">Top Right Hazardous Sector (0.60, 0.15 to 0.95, 0.65)</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px;">
+          <div>
+            <label class="form-label">Capacity Limit</label>
+            <input type="number" id="zoneCapacity" class="form-control" value="4" min="0" max="50">
+          </div>
+          <div>
+            <label class="form-label">Max Dwell Alert (sec)</label>
+            <input type="number" id="zoneMaxDwell" class="form-control" value="60" min="5" max="3600">
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="alert-modal-footer">
+      <button class="btn btn-outline" onclick="closeAddZoneModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddZone()">✓ Save & Activate Zone</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentActiveDomain = "all";
+
+function switchDomainTab(domain) {
+  currentActiveDomain = domain;
+  document.querySelectorAll(".source-tabs .source-tab").forEach(tab => {
+    tab.classList.toggle("active", tab.innerText.toLowerCase().includes(domain) || (domain === "all" && tab.innerText.includes("All")));
+  });
+
+  const sections = ["hospitality", "queue", "ppe", "parking", "security"];
+  sections.forEach(sec => {
+    const el = document.getElementById(`section-${sec}`);
+    if (el) {
+      el.style.display = (domain === "all" || domain === sec) ? "block" : "none";
+    }
+  });
+}
+
+async function fetchMultiDomainData() {
+  try {
+    const [resZones, resPPE, resHosp, resQueue, resParking] = await Promise.all([
+      fetch("/api/zones").then(r => r.json()),
+      fetch("/api/ppe/status").then(r => r.json()),
+      fetch("/api/hospitality/status").then(r => r.json()),
+      fetch("/api/queue/status").then(r => r.json()),
+      fetch("/api/parking/status").then(r => r.json())
+    ]);
+
+    // Update KPI Cards
+    const kpiTables = document.getElementById("kpi-tables");
+    if (kpiTables) kpiTables.innerText = `${resHosp.occupied_tables} / ${resHosp.total_tables}`;
+    const kpiTurnovers = document.getElementById("kpi-turnovers");
+    if (kpiTurnovers) kpiTurnovers.innerText = `Turnovers: ${resHosp.turnover_count} | Waiter Visits: ${resHosp.total_waiter_visits}`;
+
+    const kpiQueue = document.getElementById("kpi-queue");
+    if (kpiQueue) kpiQueue.innerText = resQueue.total_waiting_people;
+    const kpiWaitTime = document.getElementById("kpi-wait-time");
+    if (kpiWaitTime) kpiWaitTime.innerText = `Est. Wait: ~${resQueue.max_estimated_wait_min} min`;
+
+    const kpiPpe = document.getElementById("kpi-ppe");
+    if (kpiPpe) kpiPpe.innerText = `${resPPE.compliance_rate_pct}%`;
+    const kpiPpeViolations = document.getElementById("kpi-ppe-violations");
+    if (kpiPpeViolations) kpiPpeViolations.innerText = `${resPPE.violation_count} Violations Active`;
+
+    const kpiParking = document.getElementById("kpi-parking");
+    if (kpiParking) kpiParking.innerText = `${resParking.available_spaces} / ${resParking.total_spaces}`;
+    const kpiParkingRate = document.getElementById("kpi-parking-rate");
+    if (kpiParkingRate) kpiParkingRate.innerText = `${resParking.occupancy_rate_pct}% Occupied`;
+
+    // Render Hospitality Tables
+    renderTables(resHosp.tables);
+    // Render Queue Lines
+    renderQueues(resQueue.queues);
+    // Render PPE Workers
+    renderPPEWorkers(resPPE);
+    // Render Parking
+    renderParking(resParking.spaces);
+    // Render Security Zones
+    renderSecurityZones(resZones.cameras);
+
+  } catch (err) {
+    console.debug("Multi-domain telemetry note:", err);
+  }
+}
+
+function renderTables(tables) {
+  const container = document.getElementById("tablesGrid");
+  const badge = document.getElementById("badge-hospitality-summary");
+  if (!container) return;
+
+  if (badge) badge.innerText = `${tables.length} Monitored Tables`;
+
+  if (!tables || tables.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">No table zones configured. Click '+ Define New Zone' to add dining tables.</div>`;
+    return;
+  }
+
+  container.innerHTML = tables.map(t => {
+    const isOcc = t.occupied;
+    const border = isOcc ? 'border: 1px solid #c864ff; box-shadow: 0 0 14px rgba(200, 100, 255, 0.25);' : 'border: 1px solid var(--border-color);';
+    const badgeCls = isOcc ? 'badge-danger' : 'badge-success';
+    const m = Math.floor(t.current_dwell_sec / 60);
+    const s = Math.floor(t.current_dwell_sec % 60);
+
+    return `
+      <div class="stat-card" style="${border} flex-direction: column; align-items: stretch; gap: 10px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="cam-badge">${t.camera_id}</span>
+          <span class="badge ${badgeCls}">${isOcc ? 'OCCUPIED' : 'AVAILABLE'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div style="font-size: 16px; font-weight: 700;">${t.name}</div>
+          <div style="font-size: 12px; color: var(--text-dim);">Capacity: ${t.capacity_limit}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+          <div>Dwell: <strong>${isOcc ? `${m}m ${s}s` : '0s'}</strong></div>
+          <div>Avg Dwell: <strong>${t.avg_dwell_sec}s</strong></div>
+          <div>Turnovers: <strong>${t.total_visits}</strong></div>
+          <div>Waiter Visits: <strong>${t.waiter_visits}</strong></div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button class="btn btn-outline" style="padding: 2px 8px; font-size: 10px; color: var(--danger); border-color: rgba(255,23,68,0.3);" onclick="deleteZone('${t.camera_id}', '${t.id}')">Delete Zone</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderQueues(queues) {
+  const container = document.getElementById("queuesGrid");
+  const badge = document.getElementById("badge-queue-summary");
+  if (!container) return;
+
+  const totalWaiting = queues.reduce((sum, q) => sum + q.occupant_count, 0);
+  if (badge) badge.innerText = `${totalWaiting} Total Waiting`;
+
+  if (!queues || queues.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">No queue zones configured. Click '+ Define New Zone' to add service queues.</div>`;
+    return;
+  }
+
+  container.innerHTML = queues.map(q => {
+    const isCongested = q.occupant_count >= 4;
+    const border = isCongested ? 'border: 1px solid var(--warning); box-shadow: 0 0 14px rgba(255, 171, 0, 0.25);' : 'border: 1px solid var(--border-color);';
+
+    return `
+      <div class="stat-card" style="${border} flex-direction: column; align-items: stretch; gap: 10px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="cam-badge">${q.camera_id}</span>
+          <span class="badge ${isCongested ? 'badge-warning' : 'badge-info'}">${isCongested ? 'CONGESTED' : 'NORMAL'}</span>
+        </div>
+        <div style="font-size: 16px; font-weight: 700;">${q.name}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+          <div>In Queue: <strong style="font-size: 13px; color: var(--warning);">${q.occupant_count} persons</strong></div>
+          <div>Est. Wait Time: <strong>~${q.estimated_wait_min} min</strong></div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button class="btn btn-outline" style="padding: 2px 8px; font-size: 10px; color: var(--danger); border-color: rgba(255,23,68,0.3);" onclick="deleteZone('${q.camera_id}', '${q.id}')">Delete Zone</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderPPEWorkers(resPPE) {
+  const container = document.getElementById("ppeWorkersList");
+  const badge = document.getElementById("badge-ppe-rate");
+  if (!container) return;
+
+  if (badge) {
+    badge.innerText = `${resPPE.compliance_rate_pct}% Compliant (${resPPE.compliant_count}/${resPPE.total_active_workers})`;
+    badge.className = (resPPE.compliance_rate_pct >= 90) ? 'badge badge-success' : 'badge badge-danger';
+  }
+
+  if (resPPE.total_active_workers === 0) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 24px;">No active workers detected in camera views. Point a camera towards subjects to inspect PPE compliance.</div>`;
+    return;
+  }
+
+  if (resPPE.violations.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 16px; background: rgba(0, 230, 118, 0.08); border: 1px solid rgba(0, 230, 118, 0.3); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 24px;">🛡️</span>
+          <div>
+            <div style="font-weight: 700; color: var(--success);">100% PPE Safety Compliance Verified</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">All ${resPPE.total_active_workers} detected workers have verified Hard Hats and High-Visibility Vests.</div>
+          </div>
+        </div>
+        <span class="badge badge-success">ALL COMPLIANT</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = resPPE.violations.map(v => `
+    <div style="padding: 14px; background: rgba(255, 23, 68, 0.08); border: 1px solid rgba(255, 23, 68, 0.35); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 22px;">⚠️</span>
+        <div>
+          <div style="font-weight: 700; color: #fff;">Track #${v.track_id} (${v.employee_name || 'Unregistered Person'})</div>
+          <div style="font-size: 11px; color: var(--text-dim);">Camera: <strong>${v.camera_id}</strong> ${v.zone_name ? `| Zone: <strong>${v.zone_name}</strong>` : ''}</div>
+          <div style="font-size: 12px; color: var(--danger); font-weight: 600; margin-top: 4px;">Violations: ${v.violations.join(", ")}</div>
+        </div>
+      </div>
+      <span class="badge badge-danger">NON-COMPLIANT</span>
+    </div>
+  `).join("");
+}
+
+function renderParking(spaces) {
+  const container = document.getElementById("parkingGrid");
+  const badge = document.getElementById("badge-parking-summary");
+  if (!container) return;
+
+  const avail = spaces.filter(s => !s.occupied).length;
+  if (badge) badge.innerText = `${avail} / ${spaces.length} Available`;
+
+  if (!spaces || spaces.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">No parking zones configured. Click '+ Define New Zone' to add parking stalls.</div>`;
+    return;
+  }
+
+  container.innerHTML = spaces.map(s => {
+    const isOcc = s.occupied;
+    const border = isOcc ? 'border: 1px solid var(--danger);' : 'border: 1px solid var(--success);';
+
+    return `
+      <div class="stat-card" style="${border} flex-direction: column; align-items: stretch; gap: 10px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="cam-badge">${s.camera_id}</span>
+          <span class="badge ${isOcc ? 'badge-danger' : 'badge-success'}">${isOcc ? 'OCCUPIED' : 'AVAILABLE'}</span>
+        </div>
+        <div style="font-size: 16px; font-weight: 700;">${s.name}</div>
+        <div style="font-size: 11px; color: var(--text-dim); background: rgba(0,0,0,0.25); padding: 8px; border-radius: 4px;">
+          Occupancy Time: <strong>${isOcc ? `${Math.floor(s.current_dwell_sec)}s` : '0s'}</strong>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button class="btn btn-outline" style="padding: 2px 8px; font-size: 10px; color: var(--danger); border-color: rgba(255,23,68,0.3);" onclick="deleteZone('${s.camera_id}', '${s.id}')">Delete Zone</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderSecurityZones(cameras) {
+  const container = document.getElementById("securityGrid");
+  const badge = document.getElementById("badge-security-alerts");
+  if (!container) return;
+
+  let allSecurity = [];
+  let alertCount = 0;
+
+  Object.values(cameras || {}).forEach(camSummary => {
+    (camSummary.zones || []).forEach(z => {
+      if (z.zone_type === "restricted" || z.zone_type === "loitering") {
+        allSecurity.push(z);
+        if (z.is_alert) alertCount++;
+      }
+    });
+  });
+
+  if (badge) {
+    badge.innerText = `${alertCount} Active Alerts`;
+    badge.className = alertCount > 0 ? 'badge badge-danger' : 'badge badge-success';
+  }
+
+  if (allSecurity.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 24px;">No restricted or loitering perimeter zones configured. Click '+ Define New Zone' to add security zones.</div>`;
+    return;
+  }
+
+  container.innerHTML = allSecurity.map(z => {
+    const isAlert = z.is_alert;
+    const border = isAlert ? 'border: 1px solid var(--danger); box-shadow: 0 0 16px var(--danger-glow);' : 'border: 1px solid var(--border-color);';
+
+    return `
+      <div class="stat-card" style="${border} flex-direction: column; align-items: stretch; gap: 10px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="cam-badge">${z.camera_id}</span>
+          <span class="badge ${isAlert ? 'badge-danger' : 'badge-info'}">${isAlert ? '⚠ INTRUSION' : 'CLEAR'}</span>
+        </div>
+        <div style="font-size: 16px; font-weight: 700;">${z.name}</div>
+        <div style="font-size: 11px; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 4px;">
+          Type: <strong style="text-transform: capitalize;">${z.zone_type}</strong> | Max Dwell: <strong>${z.max_dwell_sec}s</strong>
+          ${isAlert ? `<div style="color: var(--danger); font-weight: 700; margin-top: 4px;">${z.alert_message}</div>` : ''}
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button class="btn btn-outline" style="padding: 2px 8px; font-size: 10px; color: var(--danger); border-color: rgba(255,23,68,0.3);" onclick="deleteZone('${z.camera_id}', '${z.id}')">Delete Zone</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ==================== ADD / DELETE ZONE MODAL ====================
+
+function openAddZoneModal() {
+  const modal = document.getElementById("addZoneModal");
+  if (modal) {
+    modal.classList.add("active");
+    onZoneTypeChange();
+    applyZonePreset();
+  }
+}
+
+function closeAddZoneModal() {
+  const modal = document.getElementById("addZoneModal");
+  if (modal) modal.classList.remove("active");
+}
+
+function onZoneTypeChange() {
+  const type = document.getElementById("zoneType").value;
+  const idEl = document.getElementById("zoneId");
+  const nameEl = document.getElementById("zoneName");
+  const capEl = document.getElementById("zoneCapacity");
+  const dwellEl = document.getElementById("zoneMaxDwell");
+
+  const randNum = Math.floor(Math.random() * 80) + 10;
+  if (type === "table") {
+    idEl.value = `TABLE-${randNum}`;
+    nameEl.value = `Dining Table #${randNum}`;
+    capEl.value = "4";
+    dwellEl.value = "90";
+  } else if (type === "queue") {
+    idEl.value = `QUEUE-${randNum}`;
+    nameEl.value = `Checkout Queue Line`;
+    capEl.value = "6";
+    dwellEl.value = "45";
+  } else if (type === "parking") {
+    idEl.value = `PARKING-${randNum}`;
+    nameEl.value = `Parking Bay Slot P-${randNum}`;
+    capEl.value = "1";
+    dwellEl.value = "120";
+  } else if (type === "restricted") {
+    idEl.value = `RESTRICTED-${randNum}`;
+    nameEl.value = `Hazard Perimeter Zone`;
+    capEl.value = "0";
+    dwellEl.value = "5";
+  } else if (type === "loitering") {
+    idEl.value = `LOITER-${randNum}`;
+    nameEl.value = `Entrance Lobby Security Zone`;
+    capEl.value = "4";
+    dwellEl.value = "30";
+  }
+}
+
+function getPresetCoords(preset) {
+  if (preset === "left") {
+    return [[0.05, 0.25], [0.45, 0.25], [0.45, 0.85], [0.05, 0.85]];
+  } else if (preset === "right") {
+    return [[0.55, 0.25], [0.95, 0.25], [0.95, 0.85], [0.55, 0.85]];
+  } else if (preset === "center") {
+    return [[0.30, 0.30], [0.70, 0.30], [0.70, 0.80], [0.30, 0.80]];
+  } else {
+    return [[0.60, 0.15], [0.95, 0.15], [0.95, 0.65], [0.60, 0.65]];
+  }
+}
+
+function applyZonePreset() {
+  // Coords ready when submitted
+}
+
+async function submitAddZone() {
+  const preset = document.getElementById("zonePreset").value;
+  const payload = {
+    camera_id: document.getElementById("zoneCamId").value,
+    id: document.getElementById("zoneId").value,
+    name: document.getElementById("zoneName").value,
+    zone_type: document.getElementById("zoneType").value,
+    polygon: getPresetCoords(preset),
+    capacity_limit: parseInt(document.getElementById("zoneCapacity").value) || 4,
+    max_dwell_sec: parseFloat(document.getElementById("zoneMaxDwell").value) || 30.0
+  };
+
+  try {
+    const res = await fetch("/api/zones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeAddZoneModal();
+      fetchMultiDomainData();
+    } else {
+      alert("Failed to add zone: " + (data.detail || "Unknown error"));
+    }
+  } catch (err) {
+    console.error("Error creating zone:", err);
+    alert("Error saving zone.");
+  }
+}
+
+async function deleteZone(cameraId, zoneId) {
+  if (!confirm(`Remove zone '${zoneId}' from ${cameraId}?`)) return;
+  try {
+    const res = await fetch(`/api/zones/${cameraId}/${zoneId}`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.success) {
+      fetchMultiDomainData();
+    }
+  } catch (err) {
+    console.error("Error deleting zone:", err);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  fetchMultiDomainData();
+  setInterval(fetchMultiDomainData, 1500);
+});
+</script>
+{% endblock %}

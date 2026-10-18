@@ -18,6 +18,8 @@ from src.features.feature_extractor import FeatureExtractor
 from src.activity.classifier import ActivityClassifier
 from src.activity.temporal_verifier import TemporalFallVerifier, FallVerificationState
 from src.face.recognizer import FaceRecognizer
+from src.safety.ppe_detector import PPEDetector
+from src.zones.zone_manager import ZoneManager, Zone
 
 logger = logging.getLogger("cctv.pipeline")
 
@@ -52,6 +54,9 @@ class VisionPipelineWorker:
             debounce_seconds=8.0
         )
         self.face_recognizer = FaceRecognizer(match_threshold=0.55)
+        self.ppe_detector = PPEDetector()
+        self.zone_manager = ZoneManager(camera_id=camera_id)
+        self.draw_zones_enabled = True
 
         self.running = False
         self.thread = None
@@ -60,7 +65,15 @@ class VisionPipelineWorker:
         self.latest_raw_frame = None
         self.latest_annotated_frame = None
         self.current_tracks_info = []
-        self.stats = {"fps": 0.0, "total_frames": 0, "active_tracks": 0, "fall_alerts": 0}
+        self.stats = {
+            "fps": 0.0,
+            "total_frames": 0,
+            "active_tracks": 0,
+            "fall_alerts": 0,
+            "zone_alerts": 0,
+            "ppe_compliant_count": 0,
+            "ppe_violation_count": 0
+        }
         self.last_face_sync = 0.0
 
     def start(self):
@@ -193,7 +206,11 @@ class VisionPipelineWorker:
                     if emp_id is not None:
                         track.set_identity(emp_id, emp_code, emp_name, face_conf)
 
-                # 3.6 Event Trigger on Confirmed Fall Incident
+                # 3.6 PPE (Personal Protective Equipment) Inspection
+                ppe_data = self.ppe_detector.detect_ppe(raw_frame, bbox=track.bbox, landmarks=landmarks)
+                track.set_ppe_status(ppe_data)
+
+                # 3.7 Event Trigger on Confirmed Fall Incident
                 if should_trigger_event:
                     self.stats["fall_alerts"] += 1
                     logger.warning(f"DISPATCHING REAL FALL EVENT for Track {track.track_id} on {self.camera_id}")
@@ -218,11 +235,56 @@ class VisionPipelineWorker:
                     finally:
                         db_event.close()
 
-                # 3.7 Annotate Visual HUD on Frame
-                self._draw_person_overlay(annotated, track, landmarks, features)
+            # 4. Multi-Domain Zone & ROI Processing
+            self.zone_manager.update(active_tracks, raw_frame.shape)
+
+            # Map zone membership back to tracks
+            track_map = {t.track_id: t for t in active_tracks}
+            for z in self.zone_manager.zones.values():
+                for tid in z.occupant_track_ids:
+                    if tid in track_map:
+                        track_map[tid].current_zone_id = z.id
+                        track_map[tid].current_zone_name = z.name
+                        track_map[tid].current_zone_type = z.zone_type
+
+                # Trigger Security Event on Zone Alert (Restricted Intrusion / Loitering)
+                if z.is_alert:
+                    last_alert = getattr(z, "_last_db_alert_time", 0.0)
+                    now_ts = time.time()
+                    if now_ts - last_alert > 20.0:
+                        z._last_db_alert_time = now_ts
+                        self.stats["zone_alerts"] += 1
+                        db_z_event = SessionLocal()
+                        try:
+                            event_manager.create_event(
+                                db=db_z_event,
+                                camera_id=self.camera_id,
+                                track_id=z.occupant_track_ids[0] if z.occupant_track_ids else None,
+                                employee_id=None,
+                                activity=f"zone_{z.zone_type}",
+                                activity_confidence=0.94,
+                                identity_confidence=0.0,
+                                identity_status="unknown",
+                                current_frame=raw_frame,
+                                video_buffer=self.video_buffer,
+                                notes=f"Zone Security Alert: {z.name} - {z.alert_message}"
+                            )
+                        except Exception as err:
+                            logger.error(f"Error persisting zone security event: {err}")
+                        finally:
+                            db_z_event.close()
+
+            # 5. Render Visual HUD Layers
+            # 5.1 Draw Zones on Frame
+            if self.draw_zones_enabled:
+                self.zone_manager.draw_zones(annotated)
+
+            # 5.2 Draw Person Overlays on Frame
+            for track in active_tracks:
+                self._draw_person_overlay(annotated, track, {}, {})
                 tracks_info.append(track.to_dict())
 
-            # Draw Top Status HUD
+            # 5.3 Draw Top Global HUD
             self._draw_stats_hud(annotated, len(active_tracks))
 
             # Store updated state
@@ -231,6 +293,8 @@ class VisionPipelineWorker:
                 self.current_tracks_info = tracks_info
                 self.stats["total_frames"] = frame_counter
                 self.stats["active_tracks"] = len(active_tracks)
+                self.stats["ppe_compliant_count"] = sum(1 for t in active_tracks if t.ppe_compliant)
+                self.stats["ppe_violation_count"] = sum(1 for t in active_tracks if not t.ppe_compliant)
 
             # Compute effective FPS
             now = time.time()
@@ -245,7 +309,7 @@ class VisionPipelineWorker:
             time.sleep(sleep_time)
 
     def _draw_person_overlay(self, frame: np.ndarray, track: Any, landmarks: Dict, features: Dict):
-        """Draws real bounding box, skeleton landmarks, identity tag, and activity badges."""
+        """Draws bounding box, skeleton, identity tag, activity, PPE status, and zone badge."""
         x1, y1, x2, y2 = track.bbox
         h, w = frame.shape[:2]
 
@@ -255,6 +319,9 @@ class VisionPipelineWorker:
         elif track.fall_stage in [FallVerificationState.POSSIBLE_FALL, FallVerificationState.SUSPICIOUS]:
             box_color = (0, 165, 255) # Orange
             badge_text = f"WARNING: {track.fall_stage}"
+        elif not track.ppe_compliant and track.current_zone_type == "restricted":
+            box_color = (0, 80, 255) # Warning Red-Orange
+            badge_text = "PPE VIOLATION: NO HELMET/VEST"
         else:
             box_color = (0, 255, 128) if track.identity_status == "recognized" else (220, 200, 50)
             badge_text = f"PERSON #{track.track_id}"
@@ -267,29 +334,39 @@ class VisionPipelineWorker:
         cv2.line(frame, (x2, y2), (x2 - corner_len, y2), box_color, 4)
         cv2.line(frame, (x2, y2), (x2, y2 - corner_len), box_color, 4)
 
-        # Pose landmarks
-        if landmarks:
-            for name, lm in landmarks.items():
-                lx, ly = int(lm["x"] * w), int(lm["y"] * h)
-                cv2.circle(frame, (lx, ly), 3, (0, 255, 255), -1)
-
-        # Label Badges: Identity + Activity
+        # Labels: Identity + Activity
         identity_label = f"ID: {track.employee_code or 'Unknown'} ({track.employee_name or 'Unregistered'})"
         activity_label = f"Act: {track.current_activity.upper()} ({int(track.activity_confidence * 100)}%)"
 
-        label_y = max(28, y1 - 10)
-        cv2.rectangle(frame, (x1, label_y - 24), (x1 + 250, label_y + 18), (15, 18, 25), -1)
-        cv2.rectangle(frame, (x1, label_y - 24), (x1 + 250, label_y + 18), box_color, 1)
+        # PPE Compliance Tag
+        if track.ppe_compliant:
+            ppe_label = "PPE: OK [Helmet+Vest]"
+            ppe_color = (0, 230, 118)
+        else:
+            v_short = track.ppe_violations[0] if track.ppe_violations else "Missing PPE"
+            ppe_label = f"PPE: ⚠ {v_short}"
+            ppe_color = (0, 140, 255)
+
+        # Zone Tag
+        zone_label = f"Zone: {track.current_zone_name}" if track.current_zone_name else ""
+
+        label_y = max(38, y1 - 10)
+        box_height = 42 if not zone_label else 54
+        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + 250, label_y + 4), (15, 18, 25), -1)
+        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + 250, label_y + 4), box_color, 1)
         
-        cv2.putText(frame, identity_label, (x1 + 6, label_y - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame, activity_label, (x1 + 6, label_y + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.42, box_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, identity_label, (x1 + 6, label_y - box_height + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, activity_label, (x1 + 6, label_y - box_height + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.40, box_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, ppe_label, (x1 + 6, label_y - box_height + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.38, ppe_color, 1, cv2.LINE_AA)
+        if zone_label:
+            cv2.putText(frame, zone_label, (x1 + 6, label_y - box_height + 54), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (200, 200, 200), 1, cv2.LINE_AA)
 
         if track.fall_stage != FallVerificationState.NORMAL:
-            cv2.rectangle(frame, (x1, y1 - 48), (x1 + 250, y1 - 26), box_color, -1)
-            cv2.putText(frame, badge_text, (x1 + 8, y1 - 32), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2, cv2.LINE_AA)
+            cv2.rectangle(frame, (x1, y1 - box_height - 24), (x1 + 250, y1 - box_height - 4), box_color, -1)
+            cv2.putText(frame, badge_text, (x1 + 8, y1 - box_height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2, cv2.LINE_AA)
 
     def _draw_stats_hud(self, frame: np.ndarray, num_tracks: int):
-        """Draws top HUD banner on annotated frames."""
+        """Draws top HUD banner on annotated frames with multi-domain telemetry."""
         h, w = frame.shape[:2]
         cv2.rectangle(frame, (0, 0), (w, 32), (12, 16, 24), -1)
         cv2.line(frame, (0, 32), (w, 32), (40, 50, 65), 1)
@@ -298,11 +375,16 @@ class VisionPipelineWorker:
         stream_tag = "[DEMO SIMULATION]" if is_demo else "[LIVE CAMERA]"
         tag_color = (180, 100, 255) if is_demo else (0, 255, 0)
 
-        cv2.putText(frame, f"{self.camera_id} {stream_tag}", (15, 22), cv2.FONT_HERSHEY_DUPLEX, 0.55, tag_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, f"{self.camera_id} {stream_tag}", (15, 22), cv2.FONT_HERSHEY_DUPLEX, 0.52, tag_color, 1, cv2.LINE_AA)
 
         fps_val = self.stats.get('fps', self.fps)
-        hud_text = f"AI: ACTIVE | FPS: {fps_val} | People: {num_tracks} | Falls: {self.stats.get('fall_alerts', 0)}"
-        cv2.putText(frame, hud_text, (max(220, w - 420), 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 229, 255), 1, cv2.LINE_AA)
+        zones_summary = self.zone_manager.get_summary()
+        occ_tables = zones_summary["hospitality"]["occupied_tables"]
+        tot_tables = zones_summary["hospitality"]["total_tables"]
+        queue_count = zones_summary["queue_analytics"]["total_waiting_people"]
+        
+        hud_text = f"FPS: {fps_val} | People: {num_tracks} | Tables: {occ_tables}/{tot_tables} | Queue: {queue_count} | Falls: {self.stats.get('fall_alerts', 0)}"
+        cv2.putText(frame, hud_text, (max(200, w - 540), 22), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 229, 255), 1, cv2.LINE_AA)
 
     def _draw_ai_stopped_hud(self, frame: np.ndarray):
         """Draws clean HUD banner when AI processing is paused."""

@@ -19,7 +19,7 @@ def test_dashboard_root_html_route():
 def test_dashboard_html_subpages():
     """Verifies all dashboard UI subpages return HTTP 200."""
     client = TestClient(app)
-    for path in ["/cameras", "/people-intelligence", "/events", "/employees", "/enrollment", "/analytics", "/settings"]:
+    for path in ["/cameras", "/people-intelligence", "/zone-analytics", "/events", "/employees", "/enrollment", "/analytics", "/settings"]:
         response = client.get(path)
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
@@ -94,3 +94,58 @@ def test_api_events_simulate_and_review():
     conf_res = client.post(f"/api/events/{event_id}/confirm?reviewer=TestSupervisor")
     assert conf_res.status_code == 200
     assert conf_res.json()["event"]["status"] == "confirmed"
+
+def test_api_multi_domain_endpoints():
+    client = TestClient(app)
+
+    # 1. Test GET /api/zones
+    res_zones = client.get("/api/zones")
+    assert res_zones.status_code == 200
+    data_zones = res_zones.json()
+    assert "cameras" in data_zones
+
+    # 2. Test POST & DELETE /api/zones on CAM-01
+    add_zone_payload = {
+        "camera_id": "CAM-01",
+        "id": "TEST-ZONE-99",
+        "name": "Test Dining Table",
+        "zone_type": "table",
+        "polygon": [[0.1, 0.1], [0.3, 0.1], [0.3, 0.4], [0.1, 0.4]],
+        "capacity_limit": 4,
+        "max_dwell_sec": 45.0
+    }
+    res_add = client.post("/api/zones", json=add_zone_payload)
+    assert res_add.status_code == 200
+    assert res_add.json()["success"] is True
+
+    # Delete the test zone
+    res_del = client.delete("/api/zones/CAM-01/TEST-ZONE-99")
+    assert res_del.status_code == 200
+    assert res_del.json()["success"] is True
+
+    # 3. Test GET /api/ppe/status
+    res_ppe = client.get("/api/ppe/status")
+    assert res_ppe.status_code == 200
+    data_ppe = res_ppe.json()
+    assert "compliance_rate_pct" in data_ppe
+
+    # 4. Test GET /api/hospitality/status
+    res_hosp = client.get("/api/hospitality/status")
+    assert res_hosp.status_code == 200
+    data_hosp = res_hosp.json()
+    assert "total_tables" in data_hosp
+    assert "occupied_tables" in data_hosp
+
+    # 5. Test GET /api/queue/status
+    res_queue = client.get("/api/queue/status")
+    assert res_queue.status_code == 200
+    data_queue = res_queue.json()
+    assert "total_waiting_people" in data_queue
+
+    # 6. Test GET /api/parking/status
+    res_parking = client.get("/api/parking/status")
+    assert res_parking.status_code == 200
+    data_parking = res_parking.json()
+    assert "total_spaces" in data_parking
+    assert "available_spaces" in data_parking
+

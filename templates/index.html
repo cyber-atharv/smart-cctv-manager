@@ -142,6 +142,45 @@
   </div>
 </div>
 
+<!-- Multi-Domain Intelligence Live Snapshot -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="section-header" style="margin-bottom: 12px;">
+    <div>
+      <div class="section-title">🎯 Multi-Domain Intelligence Snapshot</div>
+      <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+        Table Occupancy, Queue Line Estimation, PPE Compliance & Parking Space Detection.
+      </div>
+    </div>
+    <a href="/zone-analytics" class="btn btn-outline" style="font-size: 12px; padding: 6px 12px;">Explore Multi-Domain Hub →</a>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+    <div style="background: rgba(200, 100, 255, 0.08); border: 1px solid rgba(200, 100, 255, 0.3); border-radius: var(--radius-sm); padding: 12px;">
+      <div style="font-size: 11px; color: #d090ff; font-weight: 700; text-transform: uppercase;">🍽 Table Occupancy</div>
+      <div style="font-size: 18px; font-weight: 800; margin-top: 4px;" id="home-tables-val">-- / --</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Dining Seating Status</div>
+    </div>
+
+    <div style="background: rgba(255, 171, 0, 0.08); border: 1px solid rgba(255, 171, 0, 0.3); border-radius: var(--radius-sm); padding: 12px;">
+      <div style="font-size: 11px; color: var(--warning); font-weight: 700; text-transform: uppercase;">👥 Queue Waiting</div>
+      <div style="font-size: 18px; font-weight: 800; margin-top: 4px;" id="home-queue-val">0 Persons</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="home-wait-val">Est. Wait: ~0.0 min</div>
+    </div>
+
+    <div style="background: rgba(0, 230, 118, 0.08); border: 1px solid rgba(0, 230, 118, 0.3); border-radius: var(--radius-sm); padding: 12px;">
+      <div style="font-size: 11px; color: var(--success); font-weight: 700; text-transform: uppercase;">🦺 PPE Compliance</div>
+      <div style="font-size: 18px; font-weight: 800; margin-top: 4px;" id="home-ppe-val">100%</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Helmet & Vest Verification</div>
+    </div>
+
+    <div style="background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.3); border-radius: var(--radius-sm); padding: 12px;">
+      <div style="font-size: 11px; color: var(--primary); font-weight: 700; text-transform: uppercase;">🚗 Parking Spaces</div>
+      <div style="font-size: 18px; font-weight: 800; margin-top: 4px;" id="home-parking-val">-- / -- Available</div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Stall Availability Rate</div>
+    </div>
+  </div>
+</div>
+
 <!-- Recent Events Table -->
 <div class="card">
   <div class="section-header" style="margin-bottom: 16px;">

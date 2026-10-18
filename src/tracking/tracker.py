@@ -63,6 +63,19 @@ class TrackedPerson:
         self.age_frames = 1
         self.time_since_update = 0
 
+        # PPE (Personal Protective Equipment) Status
+        self.ppe_has_helmet: bool = False
+        self.ppe_helmet_conf: float = 0.0
+        self.ppe_has_vest: bool = False
+        self.ppe_vest_conf: float = 0.0
+        self.ppe_compliant: bool = True
+        self.ppe_violations: List[str] = []
+
+        # Zone Association
+        self.current_zone_id: Optional[str] = None
+        self.current_zone_name: Optional[str] = None
+        self.current_zone_type: Optional[str] = None
+
     def update(self, bbox: List[int], confidence: float):
         self.last_seen = time.time()
         self.age_frames += 1
@@ -100,6 +113,14 @@ class TrackedPerson:
         elif self.employee_id is None:
             self.identity_status = "unknown"
 
+    def set_ppe_status(self, ppe_data: Dict[str, Any]):
+        self.ppe_has_helmet = ppe_data.get("has_helmet", False)
+        self.ppe_helmet_conf = ppe_data.get("helmet_confidence", 0.0)
+        self.ppe_has_vest = ppe_data.get("has_vest", False)
+        self.ppe_vest_conf = ppe_data.get("vest_confidence", 0.0)
+        self.ppe_compliant = ppe_data.get("is_compliant", False)
+        self.ppe_violations = ppe_data.get("violations", [])
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "track_id": self.track_id,
@@ -116,7 +137,18 @@ class TrackedPerson:
             "employee_name": self.employee_name or "Unknown",
             "identity_status": self.identity_status,
             "identity_confidence": round(self.identity_confidence, 2),
-            "age_frames": self.age_frames
+            "age_frames": self.age_frames,
+            "ppe": {
+                "has_helmet": self.ppe_has_helmet,
+                "has_vest": self.ppe_has_vest,
+                "is_compliant": self.ppe_compliant,
+                "violations": self.ppe_violations
+            },
+            "zone": {
+                "id": self.current_zone_id,
+                "name": self.current_zone_name,
+                "type": self.current_zone_type
+            }
         }
 
 class MultiObjectTracker:

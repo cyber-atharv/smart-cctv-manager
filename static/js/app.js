@@ -527,8 +527,38 @@ async function updatePeopleIntelligence() {
   }
 }
 
+async function updateHomeMultiDomainChips() {
+  const tEl = document.getElementById("home-tables-val");
+  if (!tEl) return;
+
+  try {
+    const [hosp, queue, ppe, parking] = await Promise.all([
+      fetch("/api/hospitality/status").then(r => r.json()),
+      fetch("/api/queue/status").then(r => r.json()),
+      fetch("/api/ppe/status").then(r => r.json()),
+      fetch("/api/parking/status").then(r => r.json())
+    ]);
+
+    tEl.innerText = `${hosp.occupied_tables} / ${hosp.total_tables} Occupied`;
+    const qEl = document.getElementById("home-queue-val");
+    if (qEl) qEl.innerText = `${queue.total_waiting_people} Persons`;
+    const wEl = document.getElementById("home-wait-val");
+    if (wEl) wEl.innerText = `Est. Wait: ~${queue.max_estimated_wait_min} min`;
+
+    const ppeEl = document.getElementById("home-ppe-val");
+    if (ppeEl) ppeEl.innerText = `${ppe.compliance_rate_pct}% Compliant`;
+
+    const parkEl = document.getElementById("home-parking-val");
+    if (parkEl) parkEl.innerText = `${parking.available_spaces} / ${parking.total_spaces} Available`;
+  } catch (e) {
+    console.debug("Home chips note:", e);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initAlertWebSocket();
   updatePeopleIntelligence();
+  updateHomeMultiDomainChips();
   setInterval(updatePeopleIntelligence, 2000);
+  setInterval(updateHomeMultiDomainChips, 2500);
 });

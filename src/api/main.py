@@ -18,6 +18,7 @@ from src.events.event_manager import event_manager
 from src.face.enrollment import FaceEnrollmentService
 from src.video.pipeline import VisionPipelineWorker
 from src.video.camera import verify_camera_source, scan_local_cameras, scan_network_cameras, mask_camera_uri
+from src.zones.zone_manager import Zone
 
 logging.basicConfig(
     level=logging.INFO,
@@ -214,6 +215,15 @@ def page_people_intelligence(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request=request,
         name="people_intelligence.html",
+        context={"cameras": [c.to_dict() for c in cameras]}
+    )
+
+@app.get("/zone-analytics", response_class=HTMLResponse)
+def page_zone_analytics(request: Request, db: Session = Depends(get_db)):
+    cameras = db.query(Camera).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="zone_analytics.html",
         context={"cameras": [c.to_dict() for c in cameras]}
     )
 
@@ -458,6 +468,180 @@ def get_people_intelligence(db: Session = Depends(get_db)):
             item["is_demo"] = (worker.source_type == "demo")
             subjects.append(item)
     return {"subjects": subjects, "total_active_people": len(subjects)}
+
+# ==================== MULTI-DOMAIN VISION ANALYTICS API ====================
+
+@app.get("/api/zones")
+def get_zones(camera_id: Optional[str] = None):
+    """Returns configured zones and live occupancy telemetry across camera streams."""
+    results = {}
+    for cid, worker in pipeline_workers.items():
+        if camera_id and cid != camera_id:
+            continue
+        results[cid] = worker.zone_manager.get_summary()
+    return {"cameras": results}
+
+@app.post("/api/zones")
+def add_or_update_zone(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """Dynamically creates or updates an ROI zone on a camera."""
+    camera_id = payload.get("camera_id")
+    worker = pipeline_workers.get(camera_id)
+    if not worker:
+        cam = db.query(Camera).filter(Camera.id == camera_id).first()
+        if cam:
+            worker = VisionPipelineWorker(
+                camera_id=cam.id,
+                source_type=cam.source_type,
+                source_uri=cam.source_uri,
+                fps=cam.fps or 24,
+                ai_enabled=cam.ai_enabled
+            )
+            pipeline_workers[cam.id] = worker
+        else:
+            raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+
+    zone_id = payload.get("id") or f"{camera_id}-Z{int(time.time()) % 1000}"
+    name = payload.get("name") or f"Zone {zone_id}"
+    zone_type = payload.get("zone_type", "general")
+    polygon = payload.get("polygon", [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]])
+    capacity = int(payload.get("capacity_limit", 4))
+    max_dwell = float(payload.get("max_dwell_sec", 30.0))
+
+    new_zone = Zone(
+        zone_id=zone_id,
+        camera_id=camera_id,
+        name=name,
+        zone_type=zone_type,
+        polygon=polygon,
+        capacity_limit=capacity,
+        max_dwell_sec=max_dwell
+    )
+    worker.zone_manager.add_zone(new_zone)
+    return {"success": True, "zone": new_zone.to_dict()}
+
+@app.delete("/api/zones/{camera_id}/{zone_id}")
+def delete_zone(camera_id: str, zone_id: str):
+    worker = pipeline_workers.get(camera_id)
+    if worker:
+        worker.zone_manager.remove_zone(zone_id)
+    return {"success": True, "message": f"Zone {zone_id} removed"}
+
+@app.post("/api/zones/{camera_id}/toggle-overlay")
+def toggle_zone_overlay(camera_id: str):
+    worker = pipeline_workers.get(camera_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+    worker.draw_zones_enabled = not worker.draw_zones_enabled
+    return {"success": True, "draw_zones_enabled": worker.draw_zones_enabled}
+
+@app.get("/api/ppe/status")
+def get_ppe_status():
+    """Returns workplace safety PPE compliance metrics across all active persons."""
+    total_persons = 0
+    compliant_count = 0
+    violations_list = []
+
+    for cid, worker in pipeline_workers.items():
+        if not worker.stream.is_online:
+            continue
+        for track in worker.current_tracks_info:
+            total_persons += 1
+            ppe = track.get("ppe", {})
+            if ppe.get("is_compliant"):
+                compliant_count += 1
+            else:
+                violations_list.append({
+                    "camera_id": cid,
+                    "track_id": track.get("track_id"),
+                    "employee_code": track.get("employee_code"),
+                    "employee_name": track.get("employee_name"),
+                    "zone_name": track.get("zone", {}).get("name"),
+                    "violations": ppe.get("violations", ["Missing PPE"])
+                })
+
+    rate = round((compliant_count / total_persons * 100), 1) if total_persons > 0 else 100.0
+    return {
+        "total_active_workers": total_persons,
+        "compliant_count": compliant_count,
+        "violation_count": len(violations_list),
+        "compliance_rate_pct": rate,
+        "violations": violations_list
+    }
+
+@app.get("/api/hospitality/status")
+def get_hospitality_status():
+    """Returns restaurant/hotel table occupancy, dwell duration, and waiter service visits."""
+    all_tables = []
+    total_occupied = 0
+    total_turnovers = 0
+    total_waiter_visits = 0
+
+    for cid, worker in pipeline_workers.items():
+        summary = worker.zone_manager.get_summary()
+        hosp = summary["hospitality"]
+        total_turnovers += hosp["total_turnovers"]
+        total_waiter_visits += hosp["total_waiter_visits"]
+
+        for z in summary["zones"]:
+            if z["zone_type"] == "table":
+                all_tables.append(z)
+                if z["occupied"]:
+                    total_occupied += 1
+
+    return {
+        "total_tables": len(all_tables),
+        "occupied_tables": total_occupied,
+        "available_tables": len(all_tables) - total_occupied,
+        "turnover_count": total_turnovers,
+        "total_waiter_visits": total_waiter_visits,
+        "tables": all_tables
+    }
+
+@app.get("/api/queue/status")
+def get_queue_status():
+    """Returns retail/healthcare queue headcounts and estimated waiting times."""
+    all_queues = []
+    total_waiting = 0
+    max_wait_time = 0.0
+
+    for cid, worker in pipeline_workers.items():
+        summary = worker.zone_manager.get_summary()
+        for z in summary["zones"]:
+            if z["zone_type"] == "queue":
+                all_queues.append(z)
+                total_waiting += z["occupant_count"]
+                if z["estimated_wait_min"] > max_wait_time:
+                    max_wait_time = z["estimated_wait_min"]
+
+    return {
+        "total_queues": len(all_queues),
+        "total_waiting_people": total_waiting,
+        "max_estimated_wait_min": max_wait_time,
+        "queues": all_queues
+    }
+
+@app.get("/api/parking/status")
+def get_parking_status():
+    """Returns smart parking space availability and occupancy analytics."""
+    all_spaces = []
+    total_occupied = 0
+
+    for cid, worker in pipeline_workers.items():
+        summary = worker.zone_manager.get_summary()
+        for z in summary["zones"]:
+            if z["zone_type"] == "parking":
+                all_spaces.append(z)
+                if z["occupied"]:
+                    total_occupied += 1
+
+    rate = round((total_occupied / len(all_spaces) * 100), 1) if all_spaces else 0.0
+    return {
+        "total_spaces": len(all_spaces),
+        "occupied_spaces": total_occupied,
+        "available_spaces": len(all_spaces) - total_occupied,
+        "occupancy_rate_pct": rate,
+        "spaces": all_spaces
+    }
 
 # ==================== SAFETY EVENTS API ====================
 
