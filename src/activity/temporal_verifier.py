@@ -67,19 +67,18 @@ class TemporalFallVerifier:
             predicted_activity == "falling" and activity_confidence >= self.fall_confidence_threshold
         )
         # Check floor persistence / horizontal aspect ratio
-        is_near_floor_or_horizontal = (
-            features.get("body_angle", 0.0) >= 50.0 or features.get("height_width_ratio", 2.0) <= 1.10
-        )
+        # Must be an actual horizontal posture (body_angle >= 50.0), not upright desk sitting
+        body_angle = features.get("body_angle", 0.0)
+        hw_ratio = features.get("height_width_ratio", 2.0)
+        is_truly_horizontal = body_angle >= 50.0 or (is_fall_candidate and hw_ratio <= 0.85)
 
         st["confidence_accumulator"].append(activity_confidence if is_fall_candidate else (1.0 - activity_confidence))
 
-        # State Machine Transitions
-        if is_fall_candidate or is_near_floor_or_horizontal:
+        # State Machine Transitions — requires fall prediction AND true horizontal posture
+        if is_fall_candidate and is_truly_horizontal:
             st["fall_frame_count"] += 1
             st["recovery_frame_count"] = 0
-            
-            if is_near_floor_or_horizontal:
-                st["floor_persistence_count"] += 1
+            st["floor_persistence_count"] += 1
 
             if st["state"] == FallVerificationState.NORMAL:
                 if st["fall_frame_count"] >= self.suspicious_frames_threshold:

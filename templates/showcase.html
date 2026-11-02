@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Video Showcase | Smart CCTV Manager Prototype{% endblock %}
+{% block page_title %}Computer Vision & Edge AI Video Showcase{% endblock %}
+
+{% block content %}
+<!-- Top Header Banner with Presentation PPTX Download -->
+<div class="card" style="margin-bottom: 20px; padding: 18px 24px; border-left: 4px solid var(--primary);">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary); font-weight: 800; font-size: 11px;">PBL DAY 2026 PROTOTYPE</span>
+        <h2 style="font-size: 18px; font-weight: 700; margin: 0;">Computer Vision Technology Demonstrations</h2>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+        Smart CCTV Manager Video Demonstration Reel • CSE-AIML, DYPCET Kolhapur
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <a href="/static/docs/Smart_CCTV_Manager.pptx" download class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+        📥 Download Project Presentation (.PPTX)
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Main Theater Layout: Video Player + Interactive Playlist -->
+<div class="showcase-theater-container">
+  <!-- Left Side: Active Video Player Theater -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <div class="showcase-main-player">
+      <video id="theaterVideo" class="showcase-video-elem" controls autoplay playsinline loop>
+        <source id="videoSourceElem" src="/static/videos/cv_demo_01.mp4" type="video/mp4">
+        Your browser does not support HTML5 video playback.
+      </video>
+
+      <!-- Video Control & Metadata Bar -->
+      <div style="padding: 12px 18px; background: #0e0e12; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="cam-badge" id="theaterClipBadge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary);">CLIP 01</span>
+            <span style="font-size: 14px; font-weight: 700;" id="theaterClipTitle">Spatial Object Detection & Multi-Track Trajectories</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;" id="theaterClipSubtitle">
+            Source: cv_demo_01.mp4 • 12.8 MB Edge Tracking Sequence
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 11px; color: var(--text-dim);">Playback Speed:</span>
+          <button class="btn btn-outline" style="padding: 3px 8px; font-size: 11px;" onclick="setVideoSpeed(1.0)">1.0x</button>
+          <button class="btn btn-outline" style="padding: 3px 8px; font-size: 11px;" onclick="setVideoSpeed(1.5)">1.5x</button>
+          <button class="btn btn-outline" style="padding: 3px 8px; font-size: 11px;" onclick="setVideoSpeed(2.0)">2.0x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Video Technical Breakdown Card -->
+    <div class="card" style="padding: 18px 20px;">
+      <div class="section-title" style="margin-bottom: 8px;" id="theaterDetailHeading">Scenario Overview & Algorithm Pipeline</div>
+      <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px;" id="theaterDetailDesc">
+        Evaluation of multi-target tracking under dynamic lighting and object occlusion. Demonstrates persistent Kalman filter ID assignments across long-duration camera feeds.
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+        <div class="telemetry-metric-card" style="padding: 10px 12px;">
+          <div class="telemetry-metric-header">Computer Vision Model</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--primary);" id="theaterDetailModel">YOLOv8x + ByteTrack</div>
+        </div>
+        <div class="telemetry-metric-card" style="padding: 10px 12px;">
+          <div class="telemetry-metric-header">Target Processing Rate</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--success);" id="theaterDetailFPS">25–30 FPS</div>
+        </div>
+        <div class="telemetry-metric-card" style="padding: 10px 12px;">
+          <div class="telemetry-metric-header">Deployment Domain</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--warning);" id="theaterDetailDomain">Pedestrian Surveillance</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Interactive Clip Playlist (8 Videos) -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+      <h3 style="font-size: 15px; font-weight: 700; margin: 0;">Showcase Video Library</h3>
+      <span class="badge" style="background: #18181f; color: var(--text-muted); border: 1px solid var(--border-color);">8 CLIPS LOADED</span>
+    </div>
+
+    <div class="showcase-playlist-panel" id="playlistPanel">
+      <!-- Clip 1: Spatial Tracking -->
+      <div class="showcase-clip-card active" onclick="playClip(0)">
+        <div class="showcase-clip-thumb">🎯</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">01. Object Tracking & Trajectories</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_01.mp4 (12.8 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary); font-size: 10px;">DeepSORT / YOLOv8</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 2: Hospitality & Dining Dynamics -->
+      <div class="showcase-clip-card" onclick="playClip(1)">
+        <div class="showcase-clip-thumb">🍽️</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">02. Dining Queue & Spatial AI</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_02.mp4 (9.2 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: #18181f; color: var(--text-muted); font-size: 10px;">Zone Analytics</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 3: Fall Velocity Tracking -->
+      <div class="showcase-clip-card" onclick="playClip(2)">
+        <div class="showcase-clip-thumb">🚨</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">03. Fall Trajectory Velocity</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_03.mp4 (5.5 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: var(--danger); font-size: 10px;">Biomechanical ML</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 4: Edge Optical Stream -->
+      <div class="showcase-clip-card" onclick="playClip(3)">
+        <div class="showcase-clip-thumb">⚡</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">04. Low-Latency Edge Processing</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_04.mp4 (4.9 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: #18181f; color: var(--text-muted); font-size: 10px;">Zero-Lag Stream</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 5: Pose Skeleton Kinematics -->
+      <div class="showcase-clip-card" onclick="playClip(4)">
+        <div class="showcase-clip-thumb">🦴</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">05. Biomechanical Joint Kinematics</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_05.mp4 (4.6 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: #18181f; color: var(--text-muted); font-size: 10px;">MediaPipe Pose</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 6: Perimeter Safety Intrusion -->
+      <div class="showcase-clip-card" onclick="playClip(5)">
+        <div class="showcase-clip-thumb">🚧</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">06. Perimeter Intrusion Guard</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_06.mp4 (3.3 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: #18181f; color: var(--text-muted); font-size: 10px;">Ray Casting Polygon</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 7: In-Vehicle Driver Safety -->
+      <div class="showcase-clip-card" onclick="playClip(6)">
+        <div class="showcase-clip-thumb">🚗</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">07. Vehicle & Driver Telemetry</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_07.mp4 (2.3 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success); font-size: 10px;">Driver Eye & Cart</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clip 8: Neural Buffer -->
+      <div class="showcase-clip-card" onclick="playClip(7)">
+        <div class="showcase-clip-thumb">🧠</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">08. Edge Feature Vector Buffer</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">cv_demo_08.mp4 (0.9 MB)</div>
+          <div style="margin-top: 4px;">
+            <span class="badge" style="background: #18181f; color: var(--text-muted); font-size: 10px;">Random Forest v2.0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CLIPS = [
+  {
+    src: "/static/videos/cv_demo_01.mp4",
+    badge: "CLIP 01",
+    title: "Spatial Object Detection & Multi-Track Trajectories",
+    subtitle: "cv_demo_01.mp4 • 12.8 MB Edge Tracking Sequence",
+    desc: "Evaluation of multi-target tracking under dynamic lighting and object occlusion. Demonstrates persistent Kalman filter ID assignments across long-duration camera feeds.",
+    model: "YOLOv8x + ByteTrack",
+    fps: "25–30 FPS",
+    domain: "Pedestrian Surveillance"
+  },
+  {
+    src: "/static/videos/cv_demo_02.mp4",
+    badge: "CLIP 02",
+    title: "Dining Queue & Spatial Table Occupancy AI",
+    subtitle: "cv_demo_02.mp4 • 9.2 MB Hospitality Dynamics",
+    desc: "Polygonal table zoning with real-time dining duration estimation and service counter queue counting for commercial facilities and cafeterias.",
+    model: "Zone Ray-Casting + OCR",
+    fps: "24 FPS RTSP",
+    domain: "Hospitality & Cafeteria"
+  },
+  {
+    src: "/static/videos/cv_demo_03.mp4",
+    badge: "CLIP 03",
+    title: "Biomechanical Fall Trajectory & Impact Velocity",
+    subtitle: "cv_demo_03.mp4 • 5.5 MB Safety Incident Sequence",
+    desc: "Sudden downward acceleration detection tracking Center of Gravity (CoG Y) and torso angular tilt. Validated with the Random Forest model from D:\\project\\fai cctv.",
+    model: "Scikit-Learn Random Forest",
+    fps: "30 FPS",
+    domain: "Industrial Worker Safety"
+  },
+  {
+    src: "/static/videos/cv_demo_04.mp4",
+    badge: "CLIP 04",
+    title: "Low-Latency Edge Processing Stream",
+    subtitle: "cv_demo_04.mp4 • 4.9 MB Zero-Lag Streaming Feed",
+    desc: "Benchmark demonstrating sub-20ms latency when executing in-browser WebGL shader operations alongside asynchronous backend WebSocket telemetry dispatch.",
+    model: "WebGL + PyTorch Edge",
+    fps: "60 FPS Native",
+    domain: "Edge Compute Platform"
+  },
+  {
+    src: "/static/videos/cv_demo_05.mp4",
+    badge: "CLIP 05",
+    title: "Biomechanical Joint Kinematics & Skeleton Extraction",
+    subtitle: "cv_demo_05.mp4 • 4.6 MB Pose Landmark Stream",
+    desc: "High-accuracy 33-point COCO landmark extraction tracking spine curvature, knee angles, and horizontal displacement during walking and sitting.",
+    model: "MediaPipe Pose Lite",
+    fps: "45–60 FPS",
+    domain: "Biomechanical Ergonomics"
+  },
+  {
+    src: "/static/videos/cv_demo_06.mp4",
+    badge: "CLIP 06",
+    title: "Perimeter Intrusion Guard & Anomaly Ledger",
+    subtitle: "cv_demo_06.mp4 • 3.3 MB Security Zone Breach",
+    desc: "Virtual perimeter bounding boxes trigger visual alert snapshots and dispatch incidents immediately to SQLite ledger with automated snapshot captures.",
+    model: "Polygon Geo-Fence AI",
+    fps: "30 FPS",
+    domain: "Secure Perimeters"
+  },
+  {
+    src: "/static/videos/cv_demo_07.mp4",
+    badge: "CLIP 07",
+    title: "In-Vehicle Driver & Cart Velocity Tracker",
+    subtitle: "cv_demo_07.mp4 • 2.3 MB Driver Safety Reel",
+    desc: "Driver face orientation and drowsiness monitoring tailored for vehicle and electric cart safety on campus and warehouse loading docks.",
+    model: "Eye Aspect Ratio (EAR) + Gaze",
+    fps: "60 FPS",
+    domain: "Vehicle Driver Safety"
+  },
+  {
+    src: "/static/videos/cv_demo_08.mp4",
+    badge: "CLIP 08",
+    title: "Edge Feature Vector Buffer & Classification",
+    subtitle: "cv_demo_08.mp4 • 0.9 MB ML Buffer Architecture",
+    desc: "Temporal sliding-window buffer verifying sustained fall state across consecutive frames to eliminate transient sitting and bending false positives.",
+    model: "Temporal ML Buffer (v2.0)",
+    fps: "30 FPS",
+    domain: "False-Positive Elimination"
+  }
+];
+
+function playClip(idx) {
+  const clip = CLIPS[idx];
+  if (!clip) return;
+
+  const video = document.getElementById("theaterVideo");
+  const source = document.getElementById("videoSourceElem");
+
+  if (video && source) {
+    source.src = clip.src;
+    video.load();
+    video.play().catch(e => console.log("Autoplay handled:", e));
+  }
+
+  // Update text elements
+  document.getElementById("theaterClipBadge").textContent = clip.badge;
+  document.getElementById("theaterClipTitle").textContent = clip.title;
+  document.getElementById("theaterClipSubtitle").textContent = clip.subtitle;
+  document.getElementById("theaterDetailDesc").textContent = clip.desc;
+  document.getElementById("theaterDetailModel").textContent = clip.model;
+  document.getElementById("theaterDetailFPS").textContent = clip.fps;
+  document.getElementById("theaterDetailDomain").textContent = clip.domain;
+
+  // Update active state in playlist cards
+  const cards = document.querySelectorAll(".showcase-clip-card");
+  cards.forEach((card, i) => {
+    if (i === idx) card.classList.add("active");
+    else card.classList.remove("active");
+  });
+}
+
+function setVideoSpeed(rate) {
+  const video = document.getElementById("theaterVideo");
+  if (video) video.playbackRate = rate;
+}
+</script>
+{% endblock %}
+

@@ -13,13 +13,12 @@ def test_dashboard_root_html_route():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Smart CCTV AI Safety Platform" in response.text
-    assert "Facility Operations & Safety Dashboard" in response.text
+    assert "Smart CCTV Manager" in response.text
 
 def test_dashboard_html_subpages():
     """Verifies all dashboard UI subpages return HTTP 200."""
     client = TestClient(app)
-    for path in ["/cameras", "/people-intelligence", "/zone-analytics", "/events", "/employees", "/enrollment", "/analytics", "/settings"]:
+    for path in ["/vision-lab", "/showcase", "/cameras", "/people-intelligence", "/zone-analytics", "/events", "/employees", "/enrollment", "/analytics", "/settings"]:
         response = client.get(path)
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]

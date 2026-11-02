@@ -105,9 +105,11 @@ class ActivityClassifier:
         avg_knee = (knee_angle_l + knee_angle_r) / 2.0
 
         # Fall detection criteria:
-        # High body angle (> 50 deg from vertical), low aspect ratio (< 1.05), or rapid downward descent
-        is_horizontal = body_angle >= 50.0 or aspect_ratio < 1.05
-        is_dropping = vert_velocity > 0.06 or (body_angle > 45.0 and movement_speed > 0.08)
+        # Requires BOTH significant horizontal body inclination (body_angle >= 55.0) and horizontal aspect ratio,
+        # or rapid downward descent with body angle flexion.
+        # CRITICAL: A person sitting at a desk has body_angle < 45.0 even if upper-body crop aspect_ratio < 1.1.
+        is_horizontal = (body_angle >= 55.0 and aspect_ratio < 1.30)
+        is_dropping = (vert_velocity > 0.08 and body_angle > 45.0) or (body_angle > 55.0 and movement_speed > 0.08)
 
         if is_horizontal or is_dropping:
             conf = 0.85
@@ -119,10 +121,10 @@ class ActivityClassifier:
             probs = {"standing": 0.02, "sitting": 0.03, "working": 0.05, "falling": conf}
             return "falling", round(conf, 3), probs
 
-        # Sitting criteria: Knee bent ~ 75-125 deg, aspect ratio lower than standing (~ 1.1 - 1.5)
-        if 65.0 <= avg_knee <= 125.0 and aspect_ratio < 1.7:
-            conf = 0.82
-            probs = {"standing": 0.08, "sitting": conf, "working": 0.08, "falling": 0.02}
+        # Sitting criteria: Knee bent ~ 60-135 deg, or upright seated person (body_angle < 45 and aspect_ratio < 1.8)
+        if (60.0 <= avg_knee <= 135.0) or (aspect_ratio < 1.8 and body_angle < 45.0):
+            conf = 0.85
+            probs = {"standing": 0.08, "sitting": conf, "working": 0.05, "falling": 0.02}
             return "sitting", round(conf, 3), probs
 
         # Working criteria: Active motion / moderate knee flexion / upper body leaning slightly

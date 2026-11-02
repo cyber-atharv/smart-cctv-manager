@@ -1,5 +1,6 @@
 import datetime
 import time
+import uuid
 import asyncio
 from typing import Dict, Any, List, Optional, Callable
 from sqlalchemy.orm import Session
@@ -25,10 +26,9 @@ class EventManager:
         self.listeners.append(callback)
 
     def _generate_event_id(self) -> str:
-        date_str = datetime.datetime.utcnow().strftime("%Y%m%d")
-        timestamp_ms = int(time.time() * 1000) % 10000
-        event_id = f"EVT-{date_str}-{timestamp_ms:04d}"
-        return event_id
+        date_str = datetime.datetime.now().strftime("%Y%m%d")
+        unique_suffix = uuid.uuid4().hex[:6].upper()
+        return f"EVT-{date_str}-{unique_suffix}"
 
     def create_event(
         self,

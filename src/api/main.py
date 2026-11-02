@@ -287,6 +287,22 @@ def page_analytics(request: Request):
         context={}
     )
 
+@app.get("/vision-lab", response_class=HTMLResponse)
+def page_vision_lab(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="vision_lab.html",
+        context={}
+    )
+
+@app.get("/showcase", response_class=HTMLResponse)
+def page_showcase(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="showcase.html",
+        context={}
+    )
+
 @app.get("/settings", response_class=HTMLResponse)
 def page_settings(request: Request):
     return templates.TemplateResponse(
@@ -943,12 +959,26 @@ async def predict_posture(request: Request):
         torso_angle = feat_dict.get("torso_angle_deg", 0.0)
         cog_y = feat_dict.get("cog_y", 0.0)
         rel_head = feat_dict.get("rel_head_elevation", 0.0)
-        if torso_angle > 50.0 or cog_y > 0.70 or rel_head < -0.2:
+        if torso_angle > 55.0 and rel_head < 0.10:
             predicted_class = "LAYING_ON_FLOOR"
             confidence = 0.95
-        elif torso_angle > 25.0 or feat_dict.get("knee_angle_deg", 180.0) < 130.0:
+        elif torso_angle > 12.0 or feat_dict.get("knee_angle_deg", 180.0) < 135.0 or feat_dict.get("visibility_lower_body", 1.0) < 0.3:
             predicted_class = "SITTING"
-            confidence = 0.88
+            confidence = 0.89
+
+    # Physiological Sanity Guard:
+    # A true "LAYING_ON_FLOOR" state requires an actually horizontal torso (> 45 deg)
+    # AND low head elevation (< 0.20 relative to shoulders).
+    # If a person is upright (torso_angle < 45.0) or head is well above shoulders (rel_head > 0.20),
+    # they are SITTING at desk or STANDING, never laying on the floor!
+    torso_angle = feat_dict.get("torso_angle_deg", 0.0)
+    rel_head = feat_dict.get("rel_head_elevation", 0.8)
+    if predicted_class == "LAYING_ON_FLOOR":
+        if torso_angle < 45.0 or rel_head > 0.20:
+            predicted_class = "SITTING"
+            confidence = 0.93
+            probs_dict["SITTING"] = 0.93
+            probs_dict["LAYING_ON_FLOOR"] = 0.02
 
     is_fall = (predicted_class == "LAYING_ON_FLOOR")
     return {

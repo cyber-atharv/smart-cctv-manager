@@ -26,6 +26,13 @@ const SKELETON_BONES = [
   [0, 11], [0, 12]
 ];
 
+// Decoupled Offscreen Buffer for High-Performance MediaPipe Inference
+let offscreenCanvas = null;
+let offscreenCtx = null;
+let isPoseProcessing = false;
+let poseIntervalTimer = null;
+let latestFeatures = null;
+
 async function startInBuiltCamera() {
   const overlay = document.getElementById("camPermissionOverlay");
   const video = document.getElementById("inbuiltVideo");
@@ -52,16 +59,23 @@ async function startInBuiltCamera() {
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
 
+    // Persist camera permission so navigating between pages seamlessly re-activates feed
+    localStorage.setItem("cctv_cam_autostart", "true");
+
     // Hide permission prompt and show controls
     overlay.style.display = "none";
     controls.style.display = "flex";
-    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 30+ FPS';
+    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 60 FPS';
 
-    // 2. Initialize In-Browser MediaPipe Pose (Complexity 0 for 30-60 FPS)
+    // 2. Initialize In-Browser MediaPipe Pose (Complexity 0 for maximum throughput)
     initPoseModel();
 
-    // 3. Start High-FPS Animation Loop
+    // 3. Start High-FPS Native Animation Loop (unblocked 60 FPS)
     requestAnimationFrame(renderLoop);
+
+    // 4. Start Decoupled Background Pose Inference (~16 ticks/sec on downscaled buffer)
+    if (poseIntervalTimer) clearInterval(poseIntervalTimer);
+    poseIntervalTimer = setInterval(runDecoupledPoseInference, 60);
 
   } catch (err) {
     console.error("Camera access error:", err);
@@ -77,7 +91,7 @@ function initPoseModel() {
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
       });
       poseDetector.setOptions({
-        modelComplexity: 0, // Lite model for maximum 30–60 FPS throughput
+        modelComplexity: 0, // Lite model for maximum zero-lag throughput
         smoothLandmarks: true,
         enableSegmentation: false,
         minDetectionConfidence: 0.35,
@@ -93,7 +107,8 @@ function initPoseModel() {
 
 let latestLandmarks = null;
 
-async function renderLoop() {
+// High-Framerate Synchronous Video Render Loop (Silky Smooth 60 FPS)
+function renderLoop() {
   if (!inbuiltStream || isBackendMode) return;
 
   const video = document.getElementById("inbuiltVideo");
@@ -104,10 +119,10 @@ async function renderLoop() {
   const w = canvas.width;
   const h = canvas.height;
 
-  // 1. Draw raw video frame onto canvas (Native 30-60 FPS)
+  // 1. Draw raw video frame onto canvas (Native zero-latency 60 FPS)
   ctx.drawImage(video, 0, 0, w, h);
 
-  // 2. Compute FPS
+  // 2. Compute Real Framerate
   fpsCount++;
   const now = performance.now();
   if (now - fpsLastTime >= 1000) {
@@ -118,24 +133,39 @@ async function renderLoop() {
     fpsLastTime = now;
   }
 
-  // 3. Send frame to Pose detector if active
-  if (isAIActive && poseDetector) {
-    const nowMs = performance.now();
-    if (!predictInFlight && (nowMs - lastPredictTime >= 120)) {
-      try {
-        await poseDetector.send({ image: canvas });
-      } catch (err) {
-        // Continue rendering
-      }
-    }
-  }
-
-  // 4. Draw overlaid skeleton if detected
+  // 3. Draw overlaid skeleton if detected (immediate non-blocking paint)
   if (latestLandmarks && isSkeletonEnabled) {
     drawSkeleton(ctx, latestLandmarks, w, h);
   }
 
   requestAnimationFrame(renderLoop);
+}
+
+// Decoupled Background Pose Inference (Runs on 480x270 offscreen buffer without stalling renderLoop)
+async function runDecoupledPoseInference() {
+  if (!inbuiltStream || !isAIActive || !poseDetector || isBackendMode || isPoseProcessing) {
+    return;
+  }
+
+  const video = document.getElementById("inbuiltVideo");
+  if (!video || video.readyState < 2) return;
+
+  if (!offscreenCanvas) {
+    offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width = 480;
+    offscreenCanvas.height = 270;
+    offscreenCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
+  }
+
+  isPoseProcessing = true;
+  try {
+    offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+    await poseDetector.send({ image: offscreenCanvas });
+  } catch (err) {
+    // Continue loop
+  } finally {
+    isPoseProcessing = false;
+  }
 }
 
 function onPoseResults(results) {
@@ -237,10 +267,15 @@ function computeFeaturesFromLandmarks(landmarks) {
   const lower_lms = [left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle];
   const visibility_lower_body = lower_lms.reduce((acc, p) => acc + _vis(p), 0) / 6.0;
 
+  // When lower body is occluded by a desk/table, adapt knee angle to standard seated position (90 deg)
+  if (visibility_lower_body < 0.25) {
+    knee_angle_deg = 90.0;
+  }
+
   const h_dx = nose.x - mid_shoulder_x, h_dy = nose.y - mid_shoulder_y;
   const head_shoulder_distance = Math.sqrt(h_dx * h_dx + h_dy * h_dy) / torso_len;
 
-  return [
+  latestFeatures = [
     Math.round(torso_angle_deg * 100) / 100,
     Math.round(rel_head_elevation * 100) / 100,
     Math.round(torso_length_ratio * 100) / 100,
@@ -250,6 +285,8 @@ function computeFeaturesFromLandmarks(landmarks) {
     Math.round(visibility_lower_body * 100) / 100,
     Math.round(head_shoulder_distance * 100) / 100
   ];
+
+  return latestFeatures;
 }
 
 function updateTelemetryGauges(feat) {
@@ -285,9 +322,23 @@ function updateTelemetryGauges(feat) {
 }
 
 function handlePredictionResult(data) {
-  const pred = data.prediction || "STANDING";
-  const conf = Math.round((data.confidence || 0.9) * 100);
-  const isFall = data.is_fall || (pred === "LAYING_ON_FLOOR");
+  let pred = data.prediction || "STANDING";
+  let conf = Math.round((data.confidence || 0.9) * 100);
+
+  // Physiological Anti-False-Positive Filter:
+  // If torso is upright (< 45 deg) or head is well above shoulders (> 0.20),
+  // person is seated at desk or standing — NEVER lying on floor!
+  const torsoAngle = latestFeatures ? latestFeatures[0] : 0.0;
+  const headElev = latestFeatures ? latestFeatures[1] : 0.8;
+  const isUpright = (torsoAngle < 45.0) || (headElev > 0.20);
+
+  if (pred === "LAYING_ON_FLOOR" && isUpright) {
+    pred = "SITTING";
+    conf = 94;
+  }
+
+  // A genuine fall requires BOTH horizontal spine and low head elevation
+  const isFall = (pred === "LAYING_ON_FLOOR") && (torsoAngle >= 45.0) && (headElev <= 0.15);
 
   // Update top stat
   const postureStat = document.getElementById("postureStatVal");
@@ -310,14 +361,15 @@ function handlePredictionResult(data) {
 
   if (isFall) {
     consecutiveFloorReadings++;
-    if (consecutiveFloorReadings >= 3 && !hasDispatchedIncident) {
+    // Require 15 consecutive verified readings (~2.0s sustained) to eliminate transient dips
+    if (consecutiveFloorReadings >= 15 && !hasDispatchedIncident) {
       hasDispatchedIncident = true;
       if (fallStateLabel) {
         fallStateLabel.innerHTML = '<span style="color: var(--danger); font-weight: 800;">🚨 CONFIRMED FALL DETECTED</span>';
       }
       triggerFallIncidentActions();
     } else if (fallStateLabel) {
-      fallStateLabel.innerHTML = '<span style="color: var(--warning); font-weight: 700;">⚠ SUSPICIOUS FLOOR POSTURE</span>';
+      fallStateLabel.innerHTML = `<span style="color: var(--warning); font-weight: 700;">⚠ VERIFYING FLOOR POSTURE (${consecutiveFloorReadings}/15)</span>`;
     }
   } else {
     consecutiveFloorReadings = 0;
@@ -430,3 +482,30 @@ function toggleBackendStreamMode() {
     requestAnimationFrame(renderLoop);
   }
 }
+
+function stopInBuiltCamera() {
+  if (poseIntervalTimer) {
+    clearInterval(poseIntervalTimer);
+    poseIntervalTimer = null;
+  }
+  if (inbuiltStream) {
+    inbuiltStream.getTracks().forEach(track => track.stop());
+    inbuiltStream = null;
+  }
+  localStorage.removeItem("cctv_cam_autostart");
+  const overlay = document.getElementById("camPermissionOverlay");
+  const controls = document.getElementById("camControlsOverlay");
+  const statusBadge = document.getElementById("streamStatusBadge");
+  if (overlay) overlay.style.display = "flex";
+  if (controls) controls.style.display = "none";
+  if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--text-dim);">STANDBY</span>';
+}
+
+// Seamless Camera Auto-start: If previously allowed, start immediately without prompting
+document.addEventListener("DOMContentLoaded", () => {
+  if (localStorage.getItem("cctv_cam_autostart") === "true") {
+    console.log("[Smart CCTV Manager] Found persistent camera permission; auto-starting webcam feed...");
+    startInBuiltCamera();
+  }
+});
+

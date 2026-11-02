@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Smart CCTV AI Safety Platform{% endblock %}</title>
+  <title>{% block title %}Smart CCTV Manager | PBL Prototype{% endblock %}</title>
   
   <!-- Modern Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   
-  <!-- MediaPipe Pose for In-Browser 30-60 FPS Real-Time Inference -->
+  <!-- MediaPipe Pose & Camera Utils for In-Browser 30-60 FPS Real-Time Inference -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   
-  <!-- Core UI Stylesheet -->
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <!-- Core UI Stylesheet with Cache Buster -->
+  <link rel="stylesheet" href="/static/css/styles.css?v=pbl2026_void">
 </head>
 <body>
 
@@ -24,14 +24,20 @@
     <div class="brand-header">
       <div class="brand-icon">📹</div>
       <div>
-        <div class="brand-title">CCTV AI Safety</div>
-        <div class="brand-subtitle">Smart Vision OS</div>
+        <div class="brand-title">Smart CCTV Manager</div>
+        <div class="brand-subtitle">PBL Prototype • DYPCET</div>
       </div>
     </div>
 
     <ul class="nav-links">
       <li class="nav-item {% if request.url.path == '/' %}active{% endif %}">
         <a href="/"><span>📊</span> Dashboard</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/vision-lab' %}active{% endif %}">
+        <a href="/vision-lab" style="color: var(--primary); font-weight: 700;"><span>🔬</span> AI Vision Lab</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/showcase' %}active{% endif %}">
+        <a href="/showcase" style="color: #38bdf8;"><span>🎬</span> Video Showcase</a>
       </li>
       <li class="nav-item {% if request.url.path == '/cameras' %}active{% endif %}">
         <a href="/cameras"><span>🎥</span> Camera Fleet</a>
@@ -60,8 +66,9 @@
     </ul>
 
     <div class="sidebar-footer">
-      <div>AI Worker: <strong>Active (15 FPS)</strong></div>
-      <div style="margin-top: 4px;">Classifier: <strong>Random Forest v1.0</strong></div>
+      <div>Project: <strong>Smart CCTV Manager</strong></div>
+      <div style="margin-top: 4px; color: var(--text-dim);">PBL Day 2026 • Dept. CSE(AIML)</div>
+      <div style="margin-top: 2px; color: var(--primary);">DYPCET Kolhapur</div>
     </div>
   </aside>
 

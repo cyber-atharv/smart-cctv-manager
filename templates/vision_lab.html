@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}AI Vision Lab & Driver Safety | Smart CCTV Manager Prototype{% endblock %}
+{% block page_title %}AI Vision & Driver Safety Research Lab{% endblock %}
+
+{% block content %}
+<!-- Top Header Banner -->
+<div class="card" style="margin-bottom: 20px; padding: 18px 24px; border-left: 4px solid var(--primary);">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary); font-weight: 800; font-size: 11px;">PBL DAY 2026 PROTOTYPE</span>
+        <h2 style="font-size: 18px; font-weight: 700; margin: 0;">Autonomous Computer Vision Research Suite</h2>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+        Project: <strong>Smart CCTV Manager</strong> • CSE-AIML, DYPCET • Real-Time Edge Vision Demos for Vehicles, Carts & Facility Safety
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span class="badge badge-live" id="labStatusBadge"><span class="pulsing-dot-green"></span> VISION ENGINE READY</span>
+      <button class="btn btn-primary" onclick="startLabCamera()" id="btnStartLabCam" style="padding: 7px 14px; font-size: 12px;">
+        📹 Start Vision Cam
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Interactive Demo Selector Tabs -->
+<div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px;">
+  <button class="demo-tab-btn active" id="tabDrowsiness" onclick="selectDemo('drowsiness')">
+    <span>🚗</span> Driver Drowsiness (EAR)
+  </button>
+  <button class="demo-tab-btn" id="tabGaze" onclick="selectDemo('gaze')">
+    <span>🧭</span> Driver Distraction & Gaze
+  </button>
+  <button class="demo-tab-btn" id="tabPosture" onclick="selectDemo('posture')">
+    <span>🧍</span> Biomechanical Fall ML
+  </button>
+  <button class="demo-tab-btn" id="tabPPE" onclick="selectDemo('ppe')">
+    <span>🦺</span> PPE Safety Inspector
+  </button>
+  <button class="demo-tab-btn" id="tabPerimeter" onclick="selectDemo('perimeter')">
+    <span>🚧</span> Danger Zone Perimeter
+  </button>
+</div>
+
+<!-- Main Interactive Vision Lab Workspace -->
+<div class="vision-lab-grid">
+  <!-- Left Column: Camera Viewport with Real-Time HUD -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <!-- Critical Emergency Alarm Flashing Banner (Hidden by default) -->
+    <div id="drowsinessAlarmBanner" class="drowsiness-alarm-banner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 20px;">🚨</span>
+        <div>
+          <div style="font-size: 14px; font-weight: 800;">CRITICAL ALERT: DRIVER EYES CLOSED DETECTED!</div>
+          <div style="font-size: 11px; opacity: 0.9;">Driver drowsiness threshold exceeded (&gt;1.5s). Audio wake-up siren engaged.</div>
+        </div>
+      </div>
+      <button class="btn btn-outline" style="color: #fff; border-color: rgba(255,255,255,0.4); padding: 4px 10px; font-size: 11px;" onclick="silenceEmergencyAlarm()">
+        Acknowledge
+      </button>
+    </div>
+
+    <!-- Active Camera Viewport -->
+    <div class="hero-camera-viewport" id="labViewport" style="min-height: 460px; height: 460px;">
+      <!-- Hidden Video Element for Hardware Capture -->
+      <video id="labVideo" class="hero-video-elem" autoplay playsinline muted></video>
+      
+      <!-- GPU Render Canvas with Analytical HUD -->
+      <canvas id="labCanvas" class="hero-canvas-elem"></canvas>
+
+      <!-- Permission / Activation Standby Prompt -->
+      <div class="permission-overlay" id="labPermissionOverlay">
+        <div class="permission-icon-glow">🔬</div>
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">Connect Camera to AI Vision Lab</h3>
+        <p style="font-size: 13px; color: var(--text-muted); max-width: 440px; margin-bottom: 18px; line-height: 1.5;">
+          Allow camera access to test real-time <strong>Driver Drowsiness Eye-Closure (EAR)</strong>, Head-Pose Gaze, and Edge ML models in your browser.
+        </p>
+        <button class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700;" onclick="startLabCamera()">
+          ⚡ Connect Camera Now
+        </button>
+      </div>
+
+      <!-- Live Floating Controls -->
+      <div class="camera-controls-overlay" id="labControlsOverlay" style="display: none;">
+        <button class="ctrl-btn" onclick="toggleLabMesh()" id="btnToggleMesh">
+          🕸️ Mesh: ON
+        </button>
+        <button class="ctrl-btn" onclick="toggleLabSound()" id="btnLabSound">
+          🔊 Siren: ON
+        </button>
+        <button class="ctrl-btn" onclick="captureLabSnapshot()">
+          📷 Snapshot
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Test / Demonstration Trigger Bar -->
+    <div class="card" style="padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+      <div style="font-size: 12px; color: var(--text-muted);">
+        Interactive PBL Demo Controls:
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-danger" style="font-size: 12px; padding: 6px 14px;" onclick="simulateDrowsyEvent()">
+          ⚡ Simulate Closed Eyes (3s Alarm)
+        </button>
+        <button class="btn btn-outline" style="font-size: 12px; padding: 6px 14px;" onclick="testAlarmSiren()">
+          🔊 Test Wake-Up Siren
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Telemetry & Algorithm Cards (Dynamic per demo) -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <!-- Active Demo Info Header -->
+    <div class="telemetry-metric-card" style="border-left: 4px solid var(--primary);">
+      <div class="telemetry-metric-header">
+        <span id="demoHeaderTag">PRIMARY DEMO</span>
+        <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary);" id="demoAlgoBadge">EAR ALGORITHM</span>
+      </div>
+      <h3 style="font-size: 16px; font-weight: 700; margin: 4px 0 8px 0;" id="demoHeaderTitle">
+        Driver Drowsiness & Eye-Closure Detection
+      </h3>
+      <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 0;" id="demoHeaderDesc">
+        Designed for golf cart, forklift, and vehicle operators. Tracks 6-point ocular landmarks to compute Eye Aspect Ratio (EAR). Triggers an instant auditory wake-up buzzer if eyes remain closed &gt; 1.5 seconds.
+      </p>
+    </div>
+
+    <!-- Dynamic Metrics Panel -->
+    <div id="dynamicMetricsContainer">
+      <!-- Metric 1: Eye Aspect Ratio (EAR) -->
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-header">
+          <span>Eye Aspect Ratio (EAR)</span>
+          <span id="metricEarState" style="color: var(--success); font-weight: 700;">EYES OPEN</span>
+        </div>
+        <div class="telemetry-metric-val" id="metricEarVal">0.31 EAR</div>
+        <div class="telemetry-progress-bar">
+          <div class="telemetry-progress-fill" id="metricEarBar" style="width: 78%; background: var(--success);"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+          <span>Closed (&lt;0.18)</span>
+          <span>Threshold: 0.22</span>
+          <span>Open (&gt;0.25)</span>
+        </div>
+      </div>
+
+      <!-- Metric 2: Eye Closure Duration -->
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-header">
+          <span>Continuous Closure Duration</span>
+          <span style="font-size: 10px;">TRIGGER LIMIT: 1.5s</span>
+        </div>
+        <div class="telemetry-metric-val" id="metricClosedTimeVal" style="color: var(--text-main);">0.00 s</div>
+        <div class="telemetry-progress-bar">
+          <div class="telemetry-progress-fill" id="metricClosedTimeBar" style="width: 0%; background: var(--danger);"></div>
+        </div>
+      </div>
+
+      <!-- Metric 3: Head Yaw & Pitch Orientation -->
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-header">
+          <span>Driver Head Orientation</span>
+          <span id="metricGazeStatus" style="color: var(--success);">FOCUSED AHEAD</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
+          <div>
+            <div style="font-size: 10px; color: var(--text-dim);">Pitch (Up/Down)</div>
+            <div style="font-family: var(--font-mono); font-size: 15px; font-weight: 700;" id="metricPitchVal">+2°</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: var(--text-dim);">Yaw (Left/Right)</div>
+            <div style="font-family: var(--font-mono); font-size: 15px; font-weight: 700;" id="metricYawVal">-1°</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sensitivity Control -->
+      <div class="telemetry-metric-card" style="padding: 12px 14px;">
+        <div class="telemetry-metric-header">
+          <span>Drowsiness Trigger Threshold</span>
+          <span id="sliderValLabel" style="font-family: var(--font-mono); color: var(--primary);">1.5s</span>
+        </div>
+        <input type="range" id="drowsyThresholdSlider" min="0.8" max="3.0" step="0.1" value="1.5" style="width: 100%; accent-color: var(--primary); margin-top: 6px;" oninput="updateDrowsyThreshold(this.value)">
+      </div>
+    </div>
+
+    <!-- Technical Algorithm Spec Card -->
+    <div class="card" style="padding: 14px 16px; background: #0e0e12; border: 1px solid var(--border-color);">
+      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;">
+        Mathematical Model & Specification
+      </div>
+      <div style="font-size: 11px; color: var(--text-muted); line-height: 1.6;" id="algoFormulaText">
+        $$\text{EAR} = \frac{||p_2 - p_6|| + ||p_3 - p_5||}{2 ||p_1 - p_4||}$$
+        <div style="margin-top: 4px;">
+          Euclidean eye landmark geometry computed in-browser via WebGL shaders at <strong>30–60 FPS</strong>.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vision_lab.js"></script>
+{% endblock %}
+
