@@ -12,7 +12,34 @@
         Registered employee identities mapped into the biometric gallery for live CCTV identification.
       </div>
     </div>
-    <a href="/enrollment" class="btn btn-primary">+ Enroll New Face Profile</a>
+    <div style="display: flex; gap: 10px;">
+      <button class="btn btn-primary" onclick="toggleAddEmployeeModal()">+ Add New Person</button>
+      <a href="/enrollment" class="btn btn-outline">📹 Face Enrollment Wizard</a>
+    </div>
+  </div>
+
+  <!-- Quick Add Employee Modal -->
+  <div id="addEmployeeModal" style="display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 20px; margin-bottom: 20px;">
+    <h3 style="margin-bottom: 12px; font-size: 16px;">➕ Register New Employee / Personnel</h3>
+    <form id="quickAddEmpForm" onsubmit="handleQuickAddEmployee(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: flex-end;">
+      <div>
+        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Full Name *</label>
+        <input type="text" name="name" required placeholder="e.g. Atharv Sharma" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);">
+      </div>
+      <div>
+        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Personnel Code *</label>
+        <input type="text" name="employee_code" id="empCodeInput" required placeholder="e.g. EMP-101" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);">
+      </div>
+      <div>
+        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Department</label>
+        <input type="text" name="department" placeholder="e.g. Security Ops" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);" value="Security Ops">
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button type="submit" class="btn btn-primary" style="flex: 1;">Save Person</button>
+        <button type="button" class="btn btn-outline" onclick="toggleAddEmployeeModal()">Cancel</button>
+      </div>
+    </form>
+    <div id="quickAddMsg" style="margin-top: 8px; font-size: 13px;"></div>
   </div>
 
   <div class="table-responsive">
@@ -52,4 +79,41 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAddEmployeeModal() {
+  const modal = document.getElementById("addEmployeeModal");
+  const isHidden = modal.style.display === "none";
+  modal.style.display = isHidden ? "block" : "none";
+  if (isHidden) {
+    document.getElementById("empCodeInput").value = `EMP-${Date.now().toString().slice(-4)}`;
+  }
+}
+
+async function handleQuickAddEmployee(e) {
+  e.preventDefault();
+  const form = e.target;
+  const formData = new FormData(form);
+  const msgBox = document.getElementById("quickAddMsg");
+  msgBox.innerHTML = '<span style="color: var(--text-muted);">Saving employee...</span>';
+
+  try {
+    const res = await fetch("/api/employees", {
+      method: "POST",
+      body: formData
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msgBox.innerHTML = `<span style="color: var(--success); font-weight: bold;">✔ Employee ${data.employee_code} registered! Reloading...</span>`;
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      msgBox.innerHTML = `<span style="color: var(--danger); font-weight: bold;">✖ ${data.detail || 'Registration failed'}</span>`;
+    }
+  } catch (err) {
+    msgBox.innerHTML = `<span style="color: var(--danger);">Network error saving employee.</span>`;
+  }
+}
+</script>
 {% endblock %}

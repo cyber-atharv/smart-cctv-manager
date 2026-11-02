@@ -16,14 +16,48 @@
 
   <div class="enrollment-grid">
     <!-- Left Column: Form & Stepper -->
-    <div style="display: flex; flex-direction: column; gap: 20px;">
-      <div>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      
+      <!-- Mode Switcher -->
+      <div style="display: flex; gap: 8px; background: rgba(0,0,0,0.25); padding: 4px; border-radius: var(--radius-sm);">
+        <button id="modeSelectBtn" class="btn btn-primary" style="flex: 1; padding: 6px 10px; font-size: 12px;" onclick="switchEnrollMode('existing')">
+          👤 Existing Person
+        </button>
+        <button id="modeNewBtn" class="btn btn-outline" style="flex: 1; padding: 6px 10px; font-size: 12px;" onclick="switchEnrollMode('new')">
+          ➕ Register New Person
+        </button>
+      </div>
+
+      <!-- Existing Person Dropdown -->
+      <div id="existingPersonSection">
         <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Select Employee Target:</label>
         <select id="enrollEmployeeSelect" class="btn btn-outline" style="width: 100%; padding: 10px; font-size: 14px; background: rgba(0,0,0,0.3);">
-          {% for emp in employees %}
-          <option value="{{ emp.id }}">{{ emp.employee_code }} - {{ emp.name }} ({{ emp.department }})</option>
-          {% endfor %}
+          {% if employees %}
+            {% for emp in employees %}
+            <option value="{{ emp.id }}">{{ emp.employee_code }} - {{ emp.name }} ({{ emp.department }})</option>
+            {% endfor %}
+          {% else %}
+            <option value="">No registered employees yet (Switch to "Register New Person" above)</option>
+          {% endif %}
         </select>
+      </div>
+
+      <!-- New Person Fields -->
+      <div id="newPersonSection" style="display: none; flex-direction: column; gap: 10px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Full Name *</label>
+          <input type="text" id="newEmpName" placeholder="e.g. Atharv Sharma" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Personnel Code</label>
+            <input type="text" id="newEmpCode" placeholder="e.g. EMP-101" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Department</label>
+            <input type="text" id="newEmpDept" placeholder="e.g. Security Ops" class="btn btn-outline" style="width: 100%; text-align: left; padding: 8px 12px; background: rgba(0,0,0,0.3);" value="Security Ops">
+          </div>
+        </div>
       </div>
 
       <div>

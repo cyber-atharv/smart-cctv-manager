@@ -167,3 +167,52 @@ def test_api_multi_domain_endpoints():
     assert "total_spaces" in data_parking
     assert "available_spaces" in data_parking
 
+def test_api_predict_posture_endpoint():
+    client = TestClient(app)
+    
+    # 1. Standing features
+    standing_features = [12.0, 0.45, 1.8, 0.42, 175.0, 3.2, 0.95, 0.4]
+    res1 = client.post("/api/predict", json={"features": standing_features})
+    assert res1.status_code == 200
+    d1 = res1.json()
+    assert d1["status"] == "ok"
+    assert d1["prediction"] in ["STANDING", "SITTING"]
+    assert d1["is_fall"] is False
+
+    # 2. Laying on floor / Fall features (horizontal torso angle > 65 deg, low CoG)
+    fall_features = [78.5, -0.35, 1.2, 0.88, 90.0, 15.0, 0.3, 0.8]
+    res2 = client.post("/api/predict", json={"features": fall_features})
+    assert res2.status_code == 200
+    d2 = res2.json()
+    assert d2["status"] == "ok"
+    assert d2["prediction"] == "LAYING_ON_FLOOR"
+    assert d2["is_fall"] is True
+
+def test_api_face_enrollment_pipeline():
+    client = TestClient(app)
+    import cv2
+    import numpy as np
+
+    # Create dummy 100x100 portrait image
+    img = np.full((120, 120, 3), 160, dtype=np.uint8)
+    _, img_encoded = cv2.imencode(".jpg", img)
+    img_bytes = img_encoded.tobytes()
+
+    # Enroll via /api/face/enroll with dynamic personnel creation
+    res = client.post(
+        "/api/face/enroll",
+        data={
+            "name": "Integration Test Officer",
+            "employee_code": "TEST-OFFICER-01",
+            "department": "Security Control",
+            "pose_angle": "front",
+            "sample_index": 0
+        },
+        files={"file": ("sample.jpg", img_bytes, "image/jpeg")}
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["employee_code"] == "TEST-OFFICER-01"
+    assert data["total_samples"] >= 1
+

@@ -1,0 +1,38 @@
+{
+  "model_name": "Smart CCTV Posture & Fall Detection Classifier",
+  "version": "2.0.0",
+  "training_source": "synthetic",
+  "is_trained_on_real_data": false,
+  "classes": {
+    "0": "STANDING",
+    "1": "SITTING",
+    "2": "SLEEPING",
+    "3": "LAYING_ON_FLOOR"
+  },
+  "features": [
+    "torso_angle_deg",
+    "rel_head_elevation",
+    "torso_length_ratio",
+    "cog_y",
+    "knee_angle_deg",
+    "shoulder_tilt_deg",
+    "visibility_lower_body",
+    "head_shoulder_distance"
+  ],
+  "feature_importances": {
+    "torso_angle_deg": 0.1694,
+    "rel_head_elevation": 0.2228,
+    "torso_length_ratio": 0.0352,
+    "cog_y": 0.1445,
+    "knee_angle_deg": 0.1931,
+    "shoulder_tilt_deg": 0.0552,
+    "visibility_lower_body": 0.0936,
+    "head_shoulder_distance": 0.0861
+  },
+  "metrics": {
+    "test_accuracy": 99.84,
+    "samples_trained": 7610,
+    "samples_tested": 1910,
+    "split_method": "GroupShuffleSplit (by session_id)"
+  }
+}

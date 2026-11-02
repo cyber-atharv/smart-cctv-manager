@@ -2,6 +2,29 @@
 let currentStream = null;
 let currentPoseAngle = "front";
 let currentSampleIndex = 0;
+let currentEnrollMode = "existing";
+
+function switchEnrollMode(mode) {
+  currentEnrollMode = mode;
+  const existingSection = document.getElementById("existingPersonSection");
+  const newSection = document.getElementById("newPersonSection");
+  const selectBtn = document.getElementById("modeSelectBtn");
+  const newBtn = document.getElementById("modeNewBtn");
+
+  if (mode === "existing") {
+    existingSection.style.display = "block";
+    newSection.style.display = "none";
+    selectBtn.className = "btn btn-primary";
+    newBtn.className = "btn btn-outline";
+  } else {
+    existingSection.style.display = "none";
+    newSection.style.display = "flex";
+    selectBtn.className = "btn btn-outline";
+    newBtn.className = "btn btn-primary";
+    const nameInput = document.getElementById("newEmpName");
+    if (nameInput) nameInput.focus();
+  }
+}
 
 async function startEnrollmentCamera() {
   const video = document.getElementById("enrollmentVideo");
@@ -32,27 +55,18 @@ function selectPoseStep(angle, index) {
 }
 
 async function captureAndEnrollSample() {
-  const employeeSelect = document.getElementById("enrollEmployeeSelect");
-  const employeeId = employeeSelect.value;
-  if (!employeeId) {
-    alert("Please select an employee first.");
-    return;
-  }
-
+  const statusBox = document.getElementById("enrollmentStatusMsg");
   const video = document.getElementById("enrollmentVideo");
   const fileInput = document.getElementById("enrollmentFileInput");
-  const statusBox = document.getElementById("enrollmentStatusMsg");
 
   let blob = null;
 
   if (video.srcObject && video.style.display !== "none") {
-    // Capture frame from video canvas
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
     blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.95));
   } else if (fileInput.files && fileInput.files[0]) {
     blob = fileInput.files[0];
@@ -62,12 +76,33 @@ async function captureAndEnrollSample() {
   }
 
   const formData = new FormData();
-  formData.append("employee_id", employeeId);
+  if (currentEnrollMode === "existing") {
+    const employeeSelect = document.getElementById("enrollEmployeeSelect");
+    const employeeId = employeeSelect ? employeeSelect.value : "";
+    if (!employeeId) {
+      alert("Please select an employee or switch to 'Register New Person'.");
+      return;
+    }
+    formData.append("employee_id", employeeId);
+  } else {
+    const name = document.getElementById("newEmpName").value.trim();
+    if (!name) {
+      alert("Please enter the person's Full Name.");
+      return;
+    }
+    const code = document.getElementById("newEmpCode").value.trim() || `EMP-${Date.now().toString().slice(-4)}`;
+    const dept = document.getElementById("newEmpDept").value.trim() || "Operations";
+    formData.append("name", name);
+    formData.append("employee_code", code);
+    formData.append("department", dept);
+  }
+
   formData.append("pose_angle", currentPoseAngle);
   formData.append("sample_index", currentSampleIndex);
+  formData.append("file", blob, `sample_${currentPoseAngle}.jpg`);
   formData.append("image", blob, `sample_${currentPoseAngle}.jpg`);
 
-  statusBox.innerText = `Processing and extracting 128-d biometric embedding for ${currentPoseAngle} angle...`;
+  statusBox.innerText = `Extracting 128-d biometric embedding for ${currentPoseAngle} angle...`;
   statusBox.className = "alert-detail-item";
 
   try {
@@ -78,9 +113,9 @@ async function captureAndEnrollSample() {
     const data = await res.json();
     
     if (res.ok && data.success) {
-      statusBox.innerHTML = `<span style="color: var(--success); font-weight: bold;">✔ Enrolled ${currentPoseAngle.toUpperCase()} profile successfully! Total samples: ${data.total_samples}</span>`;
+      const empLabel = data.employee_code ? `Personnel ${data.employee_code}` : "Profile";
+      statusBox.innerHTML = `<span style="color: var(--success); font-weight: bold;">✔ Enrolled ${empLabel} (${currentPoseAngle.toUpperCase()}) successfully! Total samples: ${data.total_samples}</span>`;
       
-      // Mark step as completed
       const activeStep = document.querySelector(`.pose-step.active`);
       if (activeStep) activeStep.classList.add("completed");
 

@@ -1,0 +1,432 @@
+// ==================== IN-BUILT CAMERA ZERO-LAG VISION ENGINE ====================
+// Uses client-side WebCam + MediaPipe Pose for 30–60 FPS smooth video
+// Communicates with Scikit-Learn Biomechanical Classifier from D:\project\fai cctv
+
+let inbuiltStream = null;
+let poseDetector = null;
+let cameraInstance = null;
+let isAIActive = true;
+let isSkeletonEnabled = true;
+let isBackendMode = false;
+
+let fpsCount = 0;
+let fpsLastTime = performance.now();
+let lastPredictTime = 0;
+let predictInFlight = false;
+
+// Fall verification state
+let consecutiveFloorReadings = 0;
+let hasDispatchedIncident = false;
+
+// Skeleton Connection Pairs (COCO standard)
+const SKELETON_BONES = [
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  [23, 25], [24, 26], [25, 27], [26, 28],
+  [11, 13], [13, 15], [12, 14], [14, 16],
+  [0, 11], [0, 12]
+];
+
+async function startInBuiltCamera() {
+  const overlay = document.getElementById("camPermissionOverlay");
+  const video = document.getElementById("inbuiltVideo");
+  const canvas = document.getElementById("inbuiltCanvas");
+  const controls = document.getElementById("camControlsOverlay");
+  const statusBadge = document.getElementById("streamStatusBadge");
+
+  try {
+    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> STARTING...';
+    
+    // 1. Request Browser Camera Permission
+    inbuiltStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user"
+      },
+      audio: false
+    });
+
+    video.srcObject = inbuiltStream;
+    await video.play();
+
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    // Hide permission prompt and show controls
+    overlay.style.display = "none";
+    controls.style.display = "flex";
+    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 30+ FPS';
+
+    // 2. Initialize In-Browser MediaPipe Pose (Complexity 0 for 30-60 FPS)
+    initPoseModel();
+
+    // 3. Start High-FPS Animation Loop
+    requestAnimationFrame(renderLoop);
+
+  } catch (err) {
+    console.error("Camera access error:", err);
+    statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ PERMISSION DENIED</span>';
+    alert("Camera permission denied or camera in use by another application. Please allow camera access in your browser bar.");
+  }
+}
+
+function initPoseModel() {
+  if (typeof Pose !== "undefined") {
+    try {
+      poseDetector = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+      poseDetector.setOptions({
+        modelComplexity: 0, // Lite model for maximum 30–60 FPS throughput
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.35,
+        minTrackingConfidence: 0.35
+      });
+      poseDetector.onResults(onPoseResults);
+      console.log("MediaPipe Pose initialized successfully!");
+    } catch (e) {
+      console.warn("Could not load MediaPipe Pose from CDN, using hardware canvas rendering:", e);
+    }
+  }
+}
+
+let latestLandmarks = null;
+
+async function renderLoop() {
+  if (!inbuiltStream || isBackendMode) return;
+
+  const video = document.getElementById("inbuiltVideo");
+  const canvas = document.getElementById("inbuiltCanvas");
+  if (!video || !canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+
+  // 1. Draw raw video frame onto canvas (Native 30-60 FPS)
+  ctx.drawImage(video, 0, 0, w, h);
+
+  // 2. Compute FPS
+  fpsCount++;
+  const now = performance.now();
+  if (now - fpsLastTime >= 1000) {
+    const fps = Math.round((fpsCount * 1000) / (now - fpsLastTime));
+    const fpsStat = document.getElementById("fpsStatVal");
+    if (fpsStat) fpsStat.textContent = `${fps} FPS`;
+    fpsCount = 0;
+    fpsLastTime = now;
+  }
+
+  // 3. Send frame to Pose detector if active
+  if (isAIActive && poseDetector) {
+    const nowMs = performance.now();
+    if (!predictInFlight && (nowMs - lastPredictTime >= 120)) {
+      try {
+        await poseDetector.send({ image: canvas });
+      } catch (err) {
+        // Continue rendering
+      }
+    }
+  }
+
+  // 4. Draw overlaid skeleton if detected
+  if (latestLandmarks && isSkeletonEnabled) {
+    drawSkeleton(ctx, latestLandmarks, w, h);
+  }
+
+  requestAnimationFrame(renderLoop);
+}
+
+function onPoseResults(results) {
+  if (!results || !results.poseLandmarks) {
+    latestLandmarks = null;
+    return;
+  }
+
+  latestLandmarks = results.poseLandmarks;
+  const lm = results.poseLandmarks;
+
+  // 1. Compute canonical 8-element feature vector (from D:\project\fai cctv)
+  const features = computeFeaturesFromLandmarks(lm);
+
+  // 2. Update real-time HUD telemetry meters
+  updateTelemetryGauges(features);
+
+  // 3. Dispatch non-blocking asynchronous ML prediction (~7 calls/sec)
+  const nowMs = performance.now();
+  if (!predictInFlight && (nowMs - lastPredictTime >= 130)) {
+    predictInFlight = true;
+    lastPredictTime = nowMs;
+
+    fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features: features })
+    })
+    .then(res => res.json())
+    .then(data => {
+      predictInFlight = false;
+      if (data && data.status === "ok") {
+        handlePredictionResult(data);
+      }
+    })
+    .catch(err => {
+      predictInFlight = false;
+    });
+  }
+}
+
+// Canonical Biomechanical Feature Extractor from D:\project\fai cctv
+function computeFeaturesFromLandmarks(landmarks) {
+  function _vis(p) { return (p && p.visibility !== undefined) ? p.visibility : 1.0; }
+  function calcAngle3pt(p1, p2, p3) {
+    const v1x = p1.x - p2.x, v1y = p1.y - p2.y;
+    const v2x = p3.x - p2.x, v2y = p3.y - p2.y;
+    const d1 = Math.sqrt(v1x * v1x + v1y * v1y);
+    const d2 = Math.sqrt(v2x * v2x + v2y * v2y);
+    if (d1 < 1e-4 || d2 < 1e-4) return 180.0;
+    const dot = (v1x * v2x + v1y * v2y) / (d1 * d2);
+    return Math.acos(Math.max(-1.0, Math.min(1.0, dot))) * (180.0 / Math.PI);
+  }
+
+  const nose = landmarks[0];
+  const left_shoulder = landmarks[11], right_shoulder = landmarks[12];
+  const left_hip = landmarks[23], right_hip = landmarks[24];
+  const left_knee = landmarks[25], right_knee = landmarks[26];
+  const left_ankle = landmarks[27], right_ankle = landmarks[28];
+
+  const sh_dx = right_shoulder.x - left_shoulder.x;
+  const sh_dy = right_shoulder.y - left_shoulder.y;
+  const shoulder_width = Math.max(0.01, Math.sqrt(sh_dx * sh_dx + sh_dy * sh_dy));
+  const mid_shoulder_x = (left_shoulder.x + right_shoulder.x) / 2.0;
+  const mid_shoulder_y = (left_shoulder.y + right_shoulder.y) / 2.0;
+
+  const hips_visible = (_vis(left_hip) >= 0.45 && _vis(right_hip) >= 0.45);
+  let mid_hip_x = mid_shoulder_x, mid_hip_y = mid_shoulder_y + (1.55 * shoulder_width);
+  if (hips_visible) {
+    mid_hip_x = (left_hip.x + right_hip.x) / 2.0;
+    mid_hip_y = (left_hip.y + right_hip.y) / 2.0;
+  }
+
+  const dy = mid_hip_y - mid_shoulder_y;
+  const dx = Math.abs(mid_shoulder_x - mid_hip_x);
+  const torso_angle_deg = Math.atan2(dx, Math.max(0.001, Math.abs(dy))) * (180.0 / Math.PI);
+
+  const head_elevation = mid_shoulder_y - nose.y;
+  const rel_head_elevation = head_elevation / shoulder_width;
+
+  const t_dx = mid_hip_x - mid_shoulder_x, t_dy = mid_hip_y - mid_shoulder_y;
+  const torso_len = Math.max(0.01, Math.sqrt(t_dx * t_dx + t_dy * t_dy));
+  const torso_length_ratio = torso_len / shoulder_width;
+
+  const cog_y = Math.max(0.0, Math.min(1.0, mid_shoulder_y + (dy * 0.55)));
+
+  let knee_angle_deg = 90.0;
+  const left_knee_ok = _vis(left_hip) > 0.4 && _vis(left_knee) > 0.4 && _vis(left_ankle) > 0.4;
+  const right_knee_ok = _vis(right_hip) > 0.4 && _vis(right_knee) > 0.4 && _vis(right_ankle) > 0.4;
+  if (left_knee_ok && right_knee_ok) {
+    knee_angle_deg = (calcAngle3pt(left_hip, left_knee, left_ankle) + calcAngle3pt(right_hip, right_knee, right_ankle)) / 2.0;
+  } else if (left_knee_ok) {
+    knee_angle_deg = calcAngle3pt(left_hip, left_knee, left_ankle);
+  } else if (right_knee_ok) {
+    knee_angle_deg = calcAngle3pt(right_hip, right_knee, right_ankle);
+  }
+
+  const shoulder_tilt_deg = Math.atan2(Math.abs(sh_dy), Math.max(0.001, Math.abs(sh_dx))) * (180.0 / Math.PI);
+  const lower_lms = [left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle];
+  const visibility_lower_body = lower_lms.reduce((acc, p) => acc + _vis(p), 0) / 6.0;
+
+  const h_dx = nose.x - mid_shoulder_x, h_dy = nose.y - mid_shoulder_y;
+  const head_shoulder_distance = Math.sqrt(h_dx * h_dx + h_dy * h_dy) / torso_len;
+
+  return [
+    Math.round(torso_angle_deg * 100) / 100,
+    Math.round(rel_head_elevation * 100) / 100,
+    Math.round(torso_length_ratio * 100) / 100,
+    Math.round(cog_y * 100) / 100,
+    Math.round(knee_angle_deg * 100) / 100,
+    Math.round(shoulder_tilt_deg * 100) / 100,
+    Math.round(visibility_lower_body * 100) / 100,
+    Math.round(head_shoulder_distance * 100) / 100
+  ];
+}
+
+function updateTelemetryGauges(feat) {
+  const torsoAngle = feat[0];
+  const headElev = feat[1];
+  const cogY = feat[3];
+  const kneeAngle = feat[4];
+
+  // Top stats row
+  const cogStat = document.getElementById("cogStatVal");
+  if (cogStat) cogStat.textContent = cogY.toFixed(2);
+
+  // Side gauges
+  const mCog = document.getElementById("metricCogVal");
+  const mCogBar = document.getElementById("metricCogBar");
+  if (mCog) mCog.textContent = cogY.toFixed(2);
+  if (mCogBar) mCogBar.style.width = `${Math.min(100, cogY * 100)}%`;
+
+  const mTorso = document.getElementById("metricTorsoVal");
+  const mTorsoBar = document.getElementById("metricTorsoBar");
+  if (mTorso) mTorso.textContent = `${Math.round(torsoAngle)}°`;
+  if (mTorsoBar) {
+    const pct = Math.min(100, (torsoAngle / 90) * 100);
+    mTorsoBar.style.width = `${pct}%`;
+    mTorsoBar.style.background = torsoAngle > 50 ? "var(--danger)" : (torsoAngle > 25 ? "var(--warning)" : "var(--success)");
+  }
+
+  const mHead = document.getElementById("metricHeadVal");
+  if (mHead) mHead.textContent = headElev.toFixed(2);
+
+  const mKnee = document.getElementById("metricKneeVal");
+  if (mKnee) mKnee.textContent = `${Math.round(kneeAngle)}°`;
+}
+
+function handlePredictionResult(data) {
+  const pred = data.prediction || "STANDING";
+  const conf = Math.round((data.confidence || 0.9) * 100);
+  const isFall = data.is_fall || (pred === "LAYING_ON_FLOOR");
+
+  // Update top stat
+  const postureStat = document.getElementById("postureStatVal");
+  if (postureStat) postureStat.textContent = pred.replace("_", " ");
+
+  // Update hero badge
+  const heroBadge = document.getElementById("postureHeroBadge");
+  const confVal = document.getElementById("postureConfVal");
+  const confBar = document.getElementById("postureConfBar");
+
+  if (confVal) confVal.textContent = `${conf}%`;
+  if (confBar) confBar.style.width = `${conf}%`;
+
+  if (heroBadge) {
+    heroBadge.className = `posture-badge-hero badge-${pred.toLowerCase().replace(/_/g, '-')}`;
+    heroBadge.textContent = `● ${pred.replace(/_/g, ' ')}`;
+  }
+
+  const fallStateLabel = document.getElementById("fallStateLabel");
+
+  if (isFall) {
+    consecutiveFloorReadings++;
+    if (consecutiveFloorReadings >= 3 && !hasDispatchedIncident) {
+      hasDispatchedIncident = true;
+      if (fallStateLabel) {
+        fallStateLabel.innerHTML = '<span style="color: var(--danger); font-weight: 800;">🚨 CONFIRMED FALL DETECTED</span>';
+      }
+      triggerFallIncidentActions();
+    } else if (fallStateLabel) {
+      fallStateLabel.innerHTML = '<span style="color: var(--warning); font-weight: 700;">⚠ SUSPICIOUS FLOOR POSTURE</span>';
+    }
+  } else {
+    consecutiveFloorReadings = 0;
+    hasDispatchedIncident = false;
+    if (fallStateLabel) {
+      fallStateLabel.innerHTML = '<span style="color: var(--success); font-weight: 700;">✓ NORMAL (Safe Posture)</span>';
+    }
+  }
+}
+
+function drawSkeleton(ctx, landmarks, w, h) {
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = (consecutiveFloorReadings >= 2) ? "#ff1744" : "#00e5ff";
+  ctx.fillStyle = "#ffffff";
+
+  // Draw connecting bones
+  for (const [i1, i2] of SKELETON_BONES) {
+    const p1 = landmarks[i1];
+    const p2 = landmarks[i2];
+    if (p1 && p2 && (p1.visibility || 1) > 0.4 && (p2.visibility || 1) > 0.4) {
+      ctx.beginPath();
+      ctx.moveTo(p1.x * w, p1.y * h);
+      ctx.lineTo(p2.x * w, p2.y * h);
+      ctx.stroke();
+    }
+  }
+
+  // Draw joint nodes
+  for (let i = 0; i < landmarks.length; i++) {
+    const p = landmarks[i];
+    if (p && (p.visibility || 1) > 0.4) {
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function triggerFallIncidentActions() {
+  console.warn("FALL INCIDENT CONFIRMED — DISPATCHING AUDIT LOG");
+
+  // Play audio buzzer siren
+  if (typeof playEmergencyAlarmSiren === "function") {
+    playEmergencyAlarmSiren();
+  }
+
+  // Capture current canvas as snapshot
+  const canvas = document.getElementById("inbuiltCanvas");
+  if (canvas) {
+    canvas.toBlob(blob => {
+      const formData = new FormData();
+      formData.append("camera_id", "CAM-01");
+      formData.append("activity", "falling");
+      if (blob) formData.append("snapshot", blob, "inbuilt_fall.jpg");
+
+      fetch("/api/events/simulate?camera_id=CAM-01", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          console.log("Incident logged:", data);
+          // Increment confirmed fall counter
+          const fallCounter = document.getElementById("totalFallsVal");
+          if (fallCounter) fallCounter.textContent = parseInt(fallCounter.textContent || 0) + 1;
+        })
+        .catch(e => console.error("Event log error:", e));
+    }, "image/jpeg", 0.90);
+  }
+}
+
+function toggleLocalAI() {
+  isAIActive = !isAIActive;
+  const btn = document.getElementById("btnToggleLocalAI");
+  if (btn) btn.textContent = isAIActive ? "⚡ Pause AI" : "▶ Resume AI";
+}
+
+function toggleSkeletonView() {
+  isSkeletonEnabled = !isSkeletonEnabled;
+  const btn = document.getElementById("btnToggleSkeleton");
+  if (btn) btn.textContent = isSkeletonEnabled ? "🦴 Skeleton: ON" : "🦴 Skeleton: OFF";
+}
+
+function captureIncidentSnapshotManual() {
+  const canvas = document.getElementById("inbuiltCanvas");
+  if (!canvas) return;
+  const link = document.createElement("a");
+  link.download = `cctv_snapshot_${Date.now()}.jpg`;
+  link.href = canvas.toDataURL("image/jpeg", 0.95);
+  link.click();
+}
+
+function toggleBackendStreamMode() {
+  isBackendMode = !isBackendMode;
+  const video = document.getElementById("inbuiltVideo");
+  const canvas = document.getElementById("inbuiltCanvas");
+  const backendImg = document.getElementById("backendStreamImg");
+  const btn = document.getElementById("btnStreamMode");
+
+  if (isBackendMode) {
+    if (canvas) canvas.style.display = "none";
+    if (backendImg) {
+      backendImg.style.display = "block";
+      backendImg.src = `/api/cameras/CAM-01/stream?mode=ai&t=${Date.now()}`;
+    }
+    if (btn) btn.textContent = "🔄 Backend RTSP";
+  } else {
+    if (backendImg) backendImg.style.display = "none";
+    if (canvas) canvas.style.display = "block";
+    if (btn) btn.textContent = "🔄 Direct View";
+    requestAnimationFrame(renderLoop);
+  }
+}

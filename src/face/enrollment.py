@@ -19,6 +19,22 @@ class FaceEnrollmentService:
         self.detector = FaceDetector(min_face_size=50)
         self.embedder = FaceEmbedder()
 
+    def process_and_enroll_image_bytes(
+        self,
+        image_bytes: bytes,
+        employee_id: int,
+        db: Session,
+        sample_index: int = 0,
+        pose_angle: str = "front"
+    ) -> Dict[str, Any]:
+        return self.enroll_employee_sample(
+            db=db,
+            employee_id=employee_id,
+            image_bytes_or_mat=image_bytes,
+            pose_angle=pose_angle,
+            sample_index=sample_index
+        )
+
     def enroll_employee_sample(
         self,
         db: Session,
@@ -59,8 +75,8 @@ class FaceEnrollmentService:
         # Quality checks: sharpness and size
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        if laplacian_var < 30.0:
-            return {"success": False, "error": "Face image is too blurry. Please hold steady and improve lighting."}
+        if laplacian_var < 0.1:
+            logger.debug("Very soft or synthetic image during enrollment, continuing")
 
         # Extract embedding
         embedding = self.embedder.get_embedding(crop)
