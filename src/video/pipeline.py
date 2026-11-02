@@ -41,7 +41,7 @@ class VisionPipelineWorker:
         self.video_buffer = RollingVideoBuffer(fps=fps, max_seconds=20)
         
         # Modular computer vision components
-        self.detector = PersonDetector(conf_threshold=0.35)
+        self.detector = PersonDetector(conf_threshold=0.28)
         self.tracker = MultiObjectTracker(camera_id=camera_id, iou_threshold=0.3, max_age=30)
         self.pose_estimator = PoseEstimator(min_detection_confidence=0.4, min_tracking_confidence=0.4)
         self.feature_extractor = FeatureExtractor()
@@ -56,7 +56,7 @@ class VisionPipelineWorker:
         self.face_recognizer = FaceRecognizer(match_threshold=0.55)
         self.ppe_detector = PPEDetector()
         self.zone_manager = ZoneManager(camera_id=camera_id)
-        self.draw_zones_enabled = True
+        self.draw_zones_enabled = (self.source_type == "demo" or self.camera_id == "CAM-03")
 
         self.running = False
         self.thread = None

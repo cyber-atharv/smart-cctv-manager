@@ -429,6 +429,15 @@ def reconnect_camera(camera_id: str):
     worker.reconnect()
     return {"success": True, "camera_id": camera_id, "is_online": worker.stream.is_online}
 
+@app.post("/api/cameras/{camera_id}/toggle-zones")
+def toggle_camera_zones(camera_id: str):
+    """Toggles ROI zone overlay rendering on/off for a camera."""
+    worker = pipeline_workers.get(camera_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera worker not running")
+    worker.draw_zones_enabled = not worker.draw_zones_enabled
+    return {"success": True, "camera_id": camera_id, "draw_zones_enabled": worker.draw_zones_enabled}
+
 @app.get("/api/cameras/{camera_id}/stream")
 def stream_camera(camera_id: str, mode: str = Query("ai", pattern="^(ai|raw)$")):
     """Streams MJPEG video feed: ?mode=ai (annotated with YOLO/pose) or ?mode=raw (clean live stream)."""
@@ -846,7 +855,7 @@ def get_system_status(db: Session = Depends(get_db)):
     """Returns platform health, inference engines, and camera telemetry."""
     active_cams = sum(1 for w in pipeline_workers.values() if w.stream.is_online)
     first_worker = next(iter(pipeline_workers.values()), None)
-    pose_engine = first_worker.pose_estimator.backend if first_worker else "yolo_pose"
+    pose_engine = getattr(first_worker.pose_estimator, "backend_name", getattr(first_worker.pose_estimator, "backend", "YOLOv8-Pose")) if first_worker else "YOLOv8-Pose"
     classifier_loaded = first_worker.activity_classifier.is_loaded if first_worker else False
 
     return {

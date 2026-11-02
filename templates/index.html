@@ -103,6 +103,9 @@
           <button class="ctrl-btn" onclick="toggleStreamMode('{{ cam.id }}')" title="Toggle Raw vs AI Video View">
             👁 <span id="btn-text-mode-{{ cam.id }}">Raw View</span>
           </button>
+          <button class="ctrl-btn" onclick="toggleCameraZones('{{ cam.id }}')" title="Toggle ROI Zones Overlay">
+            🎯 <span id="btn-text-zones-{{ cam.id }}">Zones</span>
+          </button>
           {% if not cam.is_online and not cam.is_demo %}
           <button class="ctrl-btn btn-recon" onclick="reconnectCamera('{{ cam.id }}')" title="Reconnect Stream">
             🔄 Reconnect

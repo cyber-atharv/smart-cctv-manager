@@ -30,6 +30,10 @@ class ActivityClassifier:
 
         self.load_model()
 
+    @property
+    def is_loaded(self) -> bool:
+        return self.model is not None
+
     def load_model(self) -> bool:
         """Attempts to load trained ML model and metadata from disk."""
         if self.model_path.exists():

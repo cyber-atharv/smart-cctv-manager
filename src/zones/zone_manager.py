@@ -170,48 +170,8 @@ class ZoneManager:
         self._init_default_zones()
 
     def _init_default_zones(self):
-        """Seeds practical, intuitive demo zones if camera matches standard configurations."""
-        if self.camera_id in ["CAM-01", "CAM-WEBCAM"]:
-            # Entrance / Table / Counter zone
-            self.add_zone(Zone(
-                zone_id=f"{self.camera_id}-Z1",
-                camera_id=self.camera_id,
-                name="Front Table A1",
-                zone_type="table",
-                polygon=[[0.05, 0.35], [0.38, 0.35], [0.38, 0.85], [0.05, 0.85]],
-                capacity_limit=2,
-                max_dwell_sec=60.0
-            ))
-            self.add_zone(Zone(
-                zone_id=f"{self.camera_id}-Z2",
-                camera_id=self.camera_id,
-                name="Service Counter Queue",
-                zone_type="queue",
-                polygon=[[0.55, 0.25], [0.95, 0.25], [0.95, 0.75], [0.55, 0.75]],
-                capacity_limit=5,
-                max_dwell_sec=45.0
-            ))
-        elif self.camera_id == "CAM-02":
-            # Warehouse / Parking / Restricted zone
-            self.add_zone(Zone(
-                zone_id=f"{self.camera_id}-Z1",
-                camera_id=self.camera_id,
-                name="Hazard Machinery Area",
-                zone_type="restricted",
-                polygon=[[0.60, 0.20], [0.95, 0.20], [0.95, 0.70], [0.60, 0.70]],
-                capacity_limit=0,
-                max_dwell_sec=5.0
-            ))
-            self.add_zone(Zone(
-                zone_id=f"{self.camera_id}-Z2",
-                camera_id=self.camera_id,
-                name="Loading Bay Slot P-01",
-                zone_type="parking",
-                polygon=[[0.10, 0.40], [0.45, 0.40], [0.45, 0.85], [0.10, 0.85]],
-                capacity_limit=1,
-                max_dwell_sec=120.0
-            ))
-        elif self.camera_id == "CAM-03":
+        """Seeds practical demo zones for the synthetic simulation camera only."""
+        if self.camera_id == "CAM-03":
             # Dining & Lounge tables
             self.add_zone(Zone(
                 zone_id=f"{self.camera_id}-Z1",
@@ -297,7 +257,7 @@ class ZoneManager:
             badge_y = max(24, y_min - 8)
 
             if zone.is_alert:
-                status_text = f"⚠ {zone.name}: {zone.alert_message}"
+                status_text = f"[ALERT] {zone.name}: {zone.alert_message}"
             elif ztype == "table":
                 if zone.occupied:
                     m, s = divmod(int(zone.current_dwell_sec), 60)
@@ -306,7 +266,7 @@ class ZoneManager:
                     status_text = f"{zone.name} [AVAILABLE]"
             elif ztype == "queue":
                 wait_min = round(zone.occupant_count * 1.5, 1)
-                status_text = f"{zone.name} [WAITING: {zone.occupant_count} | Est: ~{wait_min}m]"
+                status_text = f"{zone.name} [WAITING: {zone.occupant_count} | Est: {wait_min} min]"
             elif ztype == "parking":
                 status_text = f"{zone.name} [{'OCCUPIED' if zone.occupied else 'AVAILABLE'}]"
             elif ztype == "restricted":

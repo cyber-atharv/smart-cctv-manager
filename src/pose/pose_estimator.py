@@ -29,6 +29,9 @@ class PoseEstimator:
     2. MediaPipe Pose Landmarker
     3. Geometric Approximation Fallback for occluded/edge conditions
     """
+    @property
+    def backend(self) -> str:
+        return self.backend_name
     def __init__(self, min_detection_confidence: float = 0.45, min_tracking_confidence: float = 0.45):
         self.min_detection_confidence = min_detection_confidence
         self.min_tracking_confidence = min_tracking_confidence

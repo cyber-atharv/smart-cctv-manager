@@ -10,7 +10,7 @@ class PersonDetector:
     Modular Person Detector supporting Ultralytics YOLOv8 with graceful fallback to OpenCV HOG / DNN.
     Filters and returns bounding boxes, confidences, and class IDs exclusively for 'person'.
     """
-    def __init__(self, model_name: str = "yolov8n.pt", conf_threshold: float = 0.45):
+    def __init__(self, model_name: str = "yolov8n.pt", conf_threshold: float = 0.28):
         self.conf_threshold = conf_threshold
         self.model_name = model_name
         self.backend = "yolo"
@@ -85,6 +85,32 @@ class PersonDetector:
                         "class_name": "person"
                     })
 
+        # Human skin-chromaticity & upper-body fallback (for close-up webcams)
+        if not detections:
+            try:
+                ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+                skin_mask = cv2.inRange(ycrcb, (0, 133, 77), (255, 175, 127))
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+                skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel)
+                skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel)
+                contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for cnt in contours:
+                    area = cv2.contourArea(cnt)
+                    if area > 3500:
+                        bx, by, bw, bh = cv2.boundingRect(cnt)
+                        x1 = max(0, bx - int(bw * 0.15))
+                        y1 = max(0, by - int(bh * 0.10))
+                        x2 = min(w, bx + bw + int(bw * 0.15))
+                        y2 = min(h, by + int(bh * 1.8))
+                        detections.append({
+                            "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                            "confidence": 0.85,
+                            "class_name": "person"
+                        })
+                        break
+            except Exception as e:
+                logger.debug(f"Skin-chromaticity fallback error: {e}")
+
         # Smart contour / foreground detector for synthetic simulation or high-contrast scenes
         if not detections:
             try:
@@ -95,7 +121,7 @@ class PersonDetector:
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 for cnt in contours:
                     area = cv2.contourArea(cnt)
-                    if 1800 < area < (w * h * 0.45):
+                    if 1800 < area:
                         bx, by, bw, bh = cv2.boundingRect(cnt)
                         by += 40 # offset
                         if bw >= 25 and bh >= 25:

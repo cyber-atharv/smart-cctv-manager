@@ -252,6 +252,21 @@ function toggleStreamMode(cameraId) {
   if (btnText) btnText.innerText = (newMode === "ai") ? "Raw View" : "AI View";
 }
 
+async function toggleCameraZones(cameraId) {
+  try {
+    const res = await fetch(`/api/cameras/${cameraId}/toggle-zones`, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      const btn = document.getElementById(`btn-text-zones-${cameraId}`);
+      if (btn) btn.innerText = data.draw_zones_enabled ? "Hide Zones" : "Show Zones";
+      const fleetBtn = document.getElementById(`fleet-zones-btn-text-${cameraId}`);
+      if (fleetBtn) fleetBtn.innerText = data.draw_zones_enabled ? "Hide Zones" : "Show Zones";
+    }
+  } catch (err) {
+    console.error("Error toggling camera zones:", err);
+  }
+}
+
 async function reconnectCamera(cameraId) {
   try {
     const res = await fetch(`/api/cameras/${cameraId}/reconnect`, { method: "POST" });

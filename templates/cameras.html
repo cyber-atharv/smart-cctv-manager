@@ -72,6 +72,9 @@
         <button class="ctrl-btn" onclick="toggleStreamMode('{{ cam.id }}')">
           👁 Raw View
         </button>
+        <button class="ctrl-btn" onclick="toggleCameraZones('{{ cam.id }}')" title="Toggle ROI Zones Overlay">
+          🎯 <span id="fleet-zones-btn-text-{{ cam.id }}">Zones</span>
+        </button>
       </div>
     </div>
 
