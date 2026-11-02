@@ -2,6 +2,62 @@
 let socket = null;
 let currentAlertEvent = null;
 const streamModes = {}; // cameraId -> "ai" | "raw"
+let audioCtx = null;
+let audioAlertEnabled = true;
+
+function playIncidentBuzzer() {
+  if (!audioAlertEnabled) return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const now = audioCtx.currentTime;
+    
+    // First high warning tone (880 Hz)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(880, now);
+    osc1.frequency.exponentialRampToValueAtTime(440, now + 0.22);
+    gain1.gain.setValueAtTime(0.25, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.22);
+
+    // Second warning pulse (700 Hz)
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(700, now + 0.26);
+    osc2.frequency.exponentialRampToValueAtTime(350, now + 0.48);
+    gain2.gain.setValueAtTime(0.25, now + 0.26);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.26);
+    osc2.stop(now + 0.48);
+  } catch (err) {
+    console.debug("[Audio Alert Note]:", err);
+  }
+}
+
+function toggleAudioAlert() {
+  audioAlertEnabled = !audioAlertEnabled;
+  const btn = document.getElementById("audioToggleBtn");
+  if (btn) {
+    btn.innerHTML = audioAlertEnabled ? "🔊 Sound: ON" : "🔇 Sound: OFF";
+    btn.style.borderColor = audioAlertEnabled ? "var(--primary)" : "var(--border-color)";
+    btn.style.color = audioAlertEnabled ? "var(--primary)" : "var(--text-muted)";
+  }
+  if (audioAlertEnabled) {
+    playIncidentBuzzer();
+  }
+}
 
 function initAlertWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -70,6 +126,9 @@ function onSafetyAlertReceived(eventData) {
       snapshotImg.style.display = "none";
     }
   }
+
+  // Play audio buzzer alarm
+  playIncidentBuzzer();
 
   // Open modal
   const modal = document.getElementById("safetyAlertModal");

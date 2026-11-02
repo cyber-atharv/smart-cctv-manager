@@ -1,12 +1,20 @@
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
 from typing import List, Optional, Tuple
 import logging
 
 logger = logging.getLogger("cctv.face_embedder")
+
+try:
+    import torch
+    import torch.nn as nn
+    import torchvision.transforms as transforms
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    nn = None
+    transforms = None
+    TORCH_AVAILABLE = False
 
 class BaseFaceEmbedder:
     """Abstract interface for Face Embedding Models."""
@@ -31,6 +39,13 @@ class TorchVisionDeepEmbedder(BaseFaceEmbedder):
     """
     def __init__(self, embedding_dim: int = 128, device: str = "cpu"):
         self.embedding_dim = embedding_dim
+        self.fallback = None
+        if not TORCH_AVAILABLE:
+            logger.warning("PyTorch not installed. TorchVisionDeepEmbedder using SpatialTextureFaceEmbedder fallback.")
+            self.fallback = SpatialTextureFaceEmbedder(embedding_dim=embedding_dim)
+            self.model_version = self.fallback.model_version
+            return
+
         self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
         self.model_version = "torchvision_deep_mobilenet_v1"
 
@@ -69,6 +84,9 @@ class TorchVisionDeepEmbedder(BaseFaceEmbedder):
     def get_embedding(self, face_crop: np.ndarray) -> Optional[List[float]]:
         if face_crop is None or face_crop.size == 0:
             return None
+
+        if not TORCH_AVAILABLE and self.fallback is not None:
+            return self.fallback.get_embedding(face_crop)
 
         try:
             rgb_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
@@ -129,11 +147,11 @@ class SpatialTextureFaceEmbedder(BaseFaceEmbedder):
 
 # Factory function with pluggable backend selection
 def get_face_embedder(backend: str = "deep") -> BaseFaceEmbedder:
-    if backend == "deep":
+    if backend == "deep" and TORCH_AVAILABLE:
         return TorchVisionDeepEmbedder()
     elif backend == "texture":
         return SpatialTextureFaceEmbedder()
     else:
-        return TorchVisionDeepEmbedder()
+        return TorchVisionDeepEmbedder() if TORCH_AVAILABLE else SpatialTextureFaceEmbedder()
 
-FaceEmbedder = TorchVisionDeepEmbedder
+FaceEmbedder = TorchVisionDeepEmbedder if TORCH_AVAILABLE else SpatialTextureFaceEmbedder

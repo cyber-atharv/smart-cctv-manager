@@ -140,24 +140,45 @@ class PoseEstimator:
         nx1, ny1 = x1 / float(w), y1 / float(h)
         nx2, ny2 = x2 / float(w), y2 / float(h)
         cx = (nx1 + nx2) / 2.0
+        cy = (ny1 + ny2) / 2.0
         bw = nx2 - nx1
         bh = ny2 - ny1
 
-        landmarks_dict = {
-            "nose": {"x": cx, "y": ny1 + 0.1 * bh, "z": 0.0, "visibility": 0.6},
-            "left_shoulder": {"x": cx - 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
-            "right_shoulder": {"x": cx + 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
-            "left_elbow": {"x": cx - 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
-            "right_elbow": {"x": cx + 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
-            "left_wrist": {"x": cx - 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
-            "right_wrist": {"x": cx + 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
-            "left_hip": {"x": cx - 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
-            "right_hip": {"x": cx + 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
-            "left_knee": {"x": cx - 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
-            "right_knee": {"x": cx + 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
-            "left_ankle": {"x": cx - 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
-            "right_ankle": {"x": cx + 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
-        }
+        # Check if posture is horizontal / fallen (aspect ratio width > 1.15 * height)
+        if bw > 1.15 * bh:
+            # Horizontal orientation (fallen / lying down on floor)
+            landmarks_dict = {
+                "nose": {"x": nx1 + 0.12 * bw, "y": cy, "z": 0.0, "visibility": 0.8},
+                "left_shoulder": {"x": nx1 + 0.28 * bw, "y": cy - 0.20 * bh, "z": 0.0, "visibility": 0.8},
+                "right_shoulder": {"x": nx1 + 0.28 * bw, "y": cy + 0.20 * bh, "z": 0.0, "visibility": 0.8},
+                "left_elbow": {"x": nx1 + 0.40 * bw, "y": cy - 0.35 * bh, "z": 0.0, "visibility": 0.7},
+                "right_elbow": {"x": nx1 + 0.40 * bw, "y": cy + 0.35 * bh, "z": 0.0, "visibility": 0.7},
+                "left_wrist": {"x": nx1 + 0.50 * bw, "y": cy - 0.40 * bh, "z": 0.0, "visibility": 0.6},
+                "right_wrist": {"x": nx1 + 0.50 * bw, "y": cy + 0.40 * bh, "z": 0.0, "visibility": 0.6},
+                "left_hip": {"x": cx + 0.08 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
+                "right_hip": {"x": cx + 0.08 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
+                "left_knee": {"x": nx1 + 0.75 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
+                "right_knee": {"x": nx1 + 0.75 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
+                "left_ankle": {"x": nx2 - 0.04 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
+                "right_ankle": {"x": nx2 - 0.04 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
+            }
+        else:
+            # Vertical orientation (standing / walking / sitting)
+            landmarks_dict = {
+                "nose": {"x": cx, "y": ny1 + 0.1 * bh, "z": 0.0, "visibility": 0.6},
+                "left_shoulder": {"x": cx - 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
+                "right_shoulder": {"x": cx + 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
+                "left_elbow": {"x": cx - 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
+                "right_elbow": {"x": cx + 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
+                "left_wrist": {"x": cx - 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
+                "right_wrist": {"x": cx + 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
+                "left_hip": {"x": cx - 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
+                "right_hip": {"x": cx + 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
+                "left_knee": {"x": cx - 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
+                "right_knee": {"x": cx + 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
+                "left_ankle": {"x": cx - 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
+                "right_ankle": {"x": cx + 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
+            }
 
         return {
             "landmarks": landmarks_dict,

@@ -5,17 +5,41 @@
 
 {% block content %}
 <div class="card">
-  <div class="section-header" style="margin-bottom: 20px;">
+  <div class="section-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
     <div>
       <div class="section-title">Incident Audit Trail</div>
       <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
         Correlated events containing Track ID, Temporal Verification Evidence, Video Clips, and Employee Identification.
       </div>
     </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a href="/api/events/export/csv" class="btn btn-outline" style="font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+        <span>📥</span> Export CSV
+      </a>
+      <a href="/api/events/export/json" class="btn btn-outline" style="font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+        <span>📥</span> Export JSON
+      </a>
+    </div>
+  </div>
+
+  <!-- Interactive Filter & Search Bar -->
+  <div style="display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; background: rgba(255,255,255,0.02); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+    <div style="flex: 1; min-width: 220px;">
+      <input type="text" id="eventSearchInput" class="form-control" placeholder="🔍 Search by Event ID, Subject, Camera..." onkeyup="filterEventsTable()" style="margin: 0;">
+    </div>
+    <div style="min-width: 160px;">
+      <select id="statusFilter" class="form-control" onchange="filterEventsTable()" style="margin: 0;">
+        <option value="">All Statuses</option>
+        <option value="pending_review">Pending Review</option>
+        <option value="confirmed">Confirmed Fall</option>
+        <option value="rejected">False Alarm</option>
+      </select>
+    </div>
+    <button class="btn btn-outline" onclick="resetEventFilters()" style="padding: 8px 12px; font-size: 12px;">Reset</button>
   </div>
 
   <div class="table-responsive">
-    <table class="cctv-table">
+    <table class="cctv-table" id="eventsTable">
       <thead>
         <tr>
           <th>Event ID</th>
@@ -31,7 +55,7 @@
       </thead>
       <tbody>
         {% for evt in events %}
-        <tr>
+        <tr data-status="{{ evt.status }}" data-camera="{{ evt.camera_id }}">
           <td><strong>{{ evt.id }}</strong></td>
           <td>{{ evt.camera_name }}</td>
           <td><span class="badge badge-info">Track #{{ evt.track_id or 'N/A' }}</span></td>
@@ -106,6 +130,34 @@ async function quickReview(eventId, decision) {
   } catch (err) {
     alert("Error updating review.");
   }
+}
+
+function filterEventsTable() {
+  const searchTerm = (document.getElementById("eventSearchInput")?.value || "").toLowerCase();
+  const statusFilter = (document.getElementById("statusFilter")?.value || "").toLowerCase();
+  const rows = document.querySelectorAll("#eventsTable tbody tr");
+
+  rows.forEach(row => {
+    const rowStatus = (row.getAttribute("data-status") || "").toLowerCase();
+    const rowText = row.innerText.toLowerCase();
+
+    const matchesSearch = !searchTerm || rowText.includes(searchTerm);
+    const matchesStatus = !statusFilter || rowStatus === statusFilter;
+
+    if (matchesSearch && matchesStatus) {
+      row.style.display = "";
+    } else {
+      row.style.display = "none";
+    }
+  });
+}
+
+function resetEventFilters() {
+  const searchInput = document.getElementById("eventSearchInput");
+  const statusSelect = document.getElementById("statusFilter");
+  if (searchInput) searchInput.value = "";
+  if (statusSelect) statusSelect.value = "";
+  filterEventsTable();
 }
 </script>
 {% endblock %}

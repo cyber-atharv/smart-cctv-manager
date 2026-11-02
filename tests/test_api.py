@@ -90,10 +90,28 @@ def test_api_events_simulate_and_review():
     event_id = evt_data["id"]
     assert evt_data["activity"] == "falling"
 
-    # 2. Confirm Event
-    conf_res = client.post(f"/api/events/{event_id}/confirm?reviewer=TestSupervisor")
+    # 2. Confirm Event using verb alias
+    conf_res = client.post(f"/api/events/{event_id}/confirmed?reviewer=TestSupervisor")
     assert conf_res.status_code == 200
     assert conf_res.json()["event"]["status"] == "confirmed"
+
+    # 3. Simulate another Event and Reject
+    sim_res2 = client.post("/api/events/simulate?camera_id=CAM-01")
+    assert sim_res2.status_code == 200
+    event_id2 = sim_res2.json()["event"]["id"]
+    rej_res = client.post(f"/api/events/{event_id2}/reject?reviewer=TestSupervisor")
+    assert rej_res.status_code == 200
+    assert rej_res.json()["event"]["status"] == "rejected"
+
+    # 4. Test Event Exports
+    csv_res = client.get("/api/events/export/csv")
+    assert csv_res.status_code == 200
+    assert "Event ID" in csv_res.text
+    assert "Camera ID" in csv_res.text
+
+    json_res = client.get("/api/events/export/json")
+    assert json_res.status_code == 200
+    assert len(json_res.json()) >= 2
 
 def test_api_multi_domain_endpoints():
     client = TestClient(app)

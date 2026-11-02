@@ -70,7 +70,10 @@
         <span class="live-indicator"><span class="pulsing-dot"></span> System Live</span>
       </div>
 
-      <div class="top-actions">
+      <div class="top-actions" style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-outline" id="audioToggleBtn" onclick="toggleAudioAlert()" title="Toggle audible safety alarm siren" style="font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+          🔊 Sound: ON
+        </button>
         <button class="btn btn-danger" onclick="triggerSimulatedFall()" title="Trigger a test fall scenario for evaluation">
           ⚡ Test Fall Simulation
         </button>

@@ -171,10 +171,13 @@ class VisionPipelineWorker:
             tracks_info = []
 
             # 3. Process Each Tracked Individual
+            track_landmarks = {}
+            track_features = {}
             for track in active_tracks:
                 # 3.1 Pose Estimation
                 pose_data = self.pose_estimator.estimate(raw_frame, bbox=track.bbox)
                 landmarks = pose_data["landmarks"] if pose_data else {}
+                track_landmarks[track.track_id] = landmarks
 
                 # 3.2 Feature Extraction
                 features = self.feature_extractor.extract(
@@ -183,6 +186,7 @@ class VisionPipelineWorker:
                     frame_shape=raw_frame.shape,
                     velocity=track.velocity
                 )
+                track_features[track.track_id] = features
 
                 # 3.3 Activity Classification (Random Forest / Decision Tree)
                 predicted_act, act_conf, probs = self.activity_classifier.predict(features)
@@ -281,7 +285,12 @@ class VisionPipelineWorker:
 
             # 5.2 Draw Person Overlays on Frame
             for track in active_tracks:
-                self._draw_person_overlay(annotated, track, {}, {})
+                self._draw_person_overlay(
+                    annotated,
+                    track,
+                    track_landmarks.get(track.track_id, {}),
+                    track_features.get(track.track_id, {})
+                )
                 tracks_info.append(track.to_dict())
 
             # 5.3 Draw Top Global HUD
@@ -326,7 +335,38 @@ class VisionPipelineWorker:
             box_color = (0, 255, 128) if track.identity_status == "recognized" else (220, 200, 50)
             badge_text = f"PERSON #{track.track_id}"
 
-        # Bounding box with corner accents
+        # 1. Draw Skeleton Stick-Figure & Keypoint Nodes
+        if landmarks:
+            skeleton_pairs = [
+                ("nose", "left_shoulder"), ("nose", "right_shoulder"),
+                ("left_shoulder", "right_shoulder"),
+                ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
+                ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
+                ("left_shoulder", "left_hip"), ("right_shoulder", "right_hip"),
+                ("left_hip", "right_hip"),
+                ("left_hip", "left_knee"), ("left_knee", "left_ankle"),
+                ("right_hip", "right_knee"), ("right_knee", "right_ankle")
+            ]
+            bone_color = (0, 0, 255) if track.fall_stage == FallVerificationState.CONFIRMED_FALL else ((0, 180, 255) if track.fall_stage != FallVerificationState.NORMAL else (0, 230, 180))
+
+            # Draw bones
+            for p1_name, p2_name in skeleton_pairs:
+                if p1_name in landmarks and p2_name in landmarks:
+                    lm1 = landmarks[p1_name]
+                    lm2 = landmarks[p2_name]
+                    if lm1.get("visibility", 0.0) >= 0.4 and lm2.get("visibility", 0.0) >= 0.4:
+                        pt1 = (int(lm1["x"] * w), int(lm1["y"] * h))
+                        pt2 = (int(lm2["x"] * w), int(lm2["y"] * h))
+                        cv2.line(frame, pt1, pt2, bone_color, 2, cv2.LINE_AA)
+
+            # Draw joint nodes
+            for lm_name, lm in landmarks.items():
+                if lm.get("visibility", 0.0) >= 0.4:
+                    pt = (int(lm["x"] * w), int(lm["y"] * h))
+                    cv2.circle(frame, pt, 4, (255, 255, 255), -1, cv2.LINE_AA)
+                    cv2.circle(frame, pt, 2, bone_color, -1, cv2.LINE_AA)
+
+        # 2. Bounding box with corner accents
         cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
         corner_len = min(20, max(6, (x2 - x1) // 4))
         cv2.line(frame, (x1, y1), (x1 + corner_len, y1), box_color, 4)
@@ -347,22 +387,29 @@ class VisionPipelineWorker:
             ppe_label = f"PPE: ⚠ {v_short}"
             ppe_color = (0, 140, 255)
 
+        # Biomechanical Telemetry Tag
+        body_angle = features.get("body_angle", 0.0)
+        aspect_ratio = features.get("height_width_ratio", 0.0)
+        telemetry_label = f"Tilt: {body_angle:.0f}° | AR: {aspect_ratio:.2f} | {track.speed:.1f}px"
+
         # Zone Tag
         zone_label = f"Zone: {track.current_zone_name}" if track.current_zone_name else ""
 
-        label_y = max(38, y1 - 10)
-        box_height = 42 if not zone_label else 54
-        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + 250, label_y + 4), (15, 18, 25), -1)
-        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + 250, label_y + 4), box_color, 1)
+        label_y = max(50, y1 - 10)
+        box_height = 56 if not zone_label else 68
+        card_width = 255
+        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + card_width, label_y + 4), (15, 18, 25), -1)
+        cv2.rectangle(frame, (x1, label_y - box_height), (x1 + card_width, label_y + 4), box_color, 1)
         
-        cv2.putText(frame, identity_label, (x1 + 6, label_y - box_height + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame, activity_label, (x1 + 6, label_y - box_height + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.40, box_color, 1, cv2.LINE_AA)
-        cv2.putText(frame, ppe_label, (x1 + 6, label_y - box_height + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.38, ppe_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, identity_label, (x1 + 6, label_y - box_height + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, activity_label, (x1 + 6, label_y - box_height + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.38, box_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, telemetry_label, (x1 + 6, label_y - box_height + 39), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (0, 225, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, ppe_label, (x1 + 6, label_y - box_height + 51), cv2.FONT_HERSHEY_SIMPLEX, 0.36, ppe_color, 1, cv2.LINE_AA)
         if zone_label:
-            cv2.putText(frame, zone_label, (x1 + 6, label_y - box_height + 54), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, zone_label, (x1 + 6, label_y - box_height + 63), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (200, 200, 200), 1, cv2.LINE_AA)
 
         if track.fall_stage != FallVerificationState.NORMAL:
-            cv2.rectangle(frame, (x1, y1 - box_height - 24), (x1 + 250, y1 - box_height - 4), box_color, -1)
+            cv2.rectangle(frame, (x1, y1 - box_height - 24), (x1 + card_width, y1 - box_height - 4), box_color, -1)
             cv2.putText(frame, badge_text, (x1 + 8, y1 - box_height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2, cv2.LINE_AA)
 
     def _draw_stats_hud(self, frame: np.ndarray, num_tracks: int):

@@ -1,10 +1,13 @@
 import os
 import time
 import asyncio
+import csv
+import io
+import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Body
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -660,6 +663,78 @@ def get_events(
     events = query.order_by(Event.timestamp.desc()).limit(limit).all()
     return [e.to_dict() for e in events]
 
+@app.get("/api/events/export/csv")
+def export_events_csv(
+    status: Optional[str] = None,
+    camera_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Event)
+    if status:
+        query = query.filter(Event.status == status)
+    if camera_id:
+        query = query.filter(Event.camera_id == camera_id)
+    events = query.order_by(Event.timestamp.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Event ID", "Timestamp (UTC)", "Camera ID", "Track ID",
+        "Employee Code", "Employee Name", "Activity", "Activity Confidence",
+        "Identity Status", "Identity Confidence", "Status", "Notes", "Reviewer", "Reviewed At"
+    ])
+
+    for e in events:
+        latest_rev = e.reviews[-1] if e.reviews else None
+        emp = e.employee
+        writer.writerow([
+            e.id,
+            e.timestamp.isoformat() if e.timestamp else "",
+            e.camera_id,
+            e.track_id or "",
+            emp.employee_code if emp else "",
+            emp.name if emp else "Unknown / Unregistered",
+            e.activity,
+            f"{e.activity_confidence:.2f}",
+            e.identity_status,
+            f"{e.identity_confidence:.2f}",
+            e.status,
+            e.notes or "",
+            latest_rev.reviewed_by if latest_rev else "",
+            latest_rev.reviewed_at.isoformat() if (latest_rev and latest_rev.reviewed_at) else ""
+        ])
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=cctv_safety_events_{time.strftime('%Y%m%d_%H%M%S')}.csv"}
+    )
+
+@app.get("/api/events/export/json")
+def export_events_json(
+    status: Optional[str] = None,
+    camera_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Event)
+    if status:
+        query = query.filter(Event.status == status)
+    if camera_id:
+        query = query.filter(Event.camera_id == camera_id)
+    events = query.order_by(Event.timestamp.desc()).all()
+    export_list = []
+    for e in events:
+        d = e.to_dict()
+        d["reviews"] = [r.to_dict() for r in e.reviews]
+        export_list.append(d)
+
+    return Response(
+        content=json.dumps(export_list, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=cctv_safety_events_{time.strftime('%Y%m%d_%H%M%S')}.json"}
+    )
+
 @app.get("/api/events/{event_id}")
 def get_event_detail(event_id: str, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
@@ -670,12 +745,14 @@ def get_event_detail(event_id: str, db: Session = Depends(get_db)):
     return data
 
 @app.post("/api/events/{event_id}/confirm")
+@app.post("/api/events/{event_id}/confirmed")
 def confirm_event(event_id: str, note: Optional[str] = None, reviewer: str = "Supervisor", db: Session = Depends(get_db)):
     event = event_manager.review_event(db, event_id, decision="confirmed", note=note, reviewed_by=reviewer)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return {"success": True, "event": event.to_dict()}
 
+@app.post("/api/events/{event_id}/reject")
 @app.post("/api/events/{event_id}/rejected")
 def reject_event(event_id: str, note: Optional[str] = None, reviewer: str = "Supervisor", db: Session = Depends(get_db)):
     event = event_manager.review_event(db, event_id, decision="rejected", note=note, reviewed_by=reviewer)

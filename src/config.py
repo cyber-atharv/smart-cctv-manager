@@ -1,5 +1,17 @@
 import os
-import yaml
+try:
+    import yaml
+    def _yaml_load(stream):
+        return yaml.safe_load(stream) or {}
+except ImportError:
+    try:
+        from ruamel.yaml import YAML
+        _ruamel_parser = YAML(typ='safe')
+        def _yaml_load(stream):
+            return _ruamel_parser.load(stream) or {}
+    except ImportError:
+        def _yaml_load(stream):
+            return {}
 from pathlib import Path
 from typing import Any, Dict
 
@@ -9,7 +21,7 @@ def load_yaml(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        return _yaml_load(f)
 
 class Config:
     def __init__(self):
