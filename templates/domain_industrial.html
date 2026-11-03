@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Industrial & Workplace Safety | Universal Smart Vision{% endblock %}
+{% block page_title %}Industrial & Workplace Safety Engine{% endblock %}
+
+{% block content %}
+<!-- Industrial Safety Header Banner -->
+<div class="card" style="padding: 16px 20px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">OSHA COMPLIANCE</span>
+        <h2 style="font-size: 18px; font-weight: 700; margin: 0;">Automated PPE Inspection & Hazard Perimeter Guard</h2>
+      </div>
+      <p style="font-size: 12px; color: var(--text-dim); margin: 4px 0 0 0;">
+        Real-Time Hardhat & High-Vis Vest Classifier • Heavy Machinery Exclusion Zone • Thermal Anomaly / Fire Smoke Visual Guard
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-warning" onclick="togglePPEViolation('vest')">⚡ Toggle Vest Violation</button>
+      <button class="btn btn-warning" onclick="togglePPEViolation('helmet')">⚡ Toggle Helmet Violation</button>
+      <button class="btn btn-danger" onclick="toggleFireAnomaly()">🔥 Simulate Fire/Smoke</button>
+    </div>
+  </div>
+</div>
+
+<div class="vision-lab-grid" style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin-bottom: 20px;">
+  <!-- Left: Live Optical Inspection Viewport -->
+  <div class="card" style="padding: 18px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div style="font-size: 14px; font-weight: 700;">Safety Optical Scanner (CAM-02 / Workplace)</div>
+      <span class="badge badge-live" id="indBadge"><span class="pulsing-dot-green"></span> SCANNING ACTIVE</span>
+    </div>
+
+    <div style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
+      <video id="indVideo" autoplay playsinline muted style="display: none;"></video>
+      <canvas id="indCanvas" width="800" height="450" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
+
+      <div style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-color);">
+        <span style="color: #f59e0b;">INSPECTION: PPE + ZONE</span> | <span id="indFps">60 FPS</span>
+      </div>
+
+      <div id="fireAlertBanner" style="display: none; position: absolute; top: 50px; left: 50%; transform: translateX(-50%); background: rgba(220, 38, 38, 0.9); color: white; padding: 8px 18px; border-radius: 6px; font-weight: 800; font-size: 13px; border: 2px solid #fff; box-shadow: 0 0 20px rgba(220, 38, 38, 0.8);">
+        🔥 SMOKE & THERMAL ANOMALY IDENTIFIED — EVACUATION DISPATCHED
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 12px;">
+      <div style="color: var(--text-dim);">Compliance Standard: ISO 45001 / OSHA 1910 PPE Mandate</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-outline" style="font-size: 11px; padding: 4px 10px;" onclick="startIndustrialCam()">📹 Use Local Cam</button>
+        <button class="btn btn-outline" style="font-size: 11px; padding: 4px 10px;" onclick="loadIndustrialClip()">🎬 Load Factory Clip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Real-time Compliance Telemetry -->
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">Live PPE Compliance Card</div>
+      <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 14px;">
+        Individual equipment verification metrics per worker.
+      </p>
+
+      <!-- Worker Identity Card -->
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <div style="font-weight: 700; font-size: 13px;">WORKER #01</div>
+            <div style="font-size: 10px; color: var(--text-dim);">ZONE: Heavy Machine Bay B</div>
+          </div>
+          <span class="badge" id="ppeStatusBadge" style="background: rgba(34, 197, 94, 0.15); color: var(--success); font-weight: 700;">
+            ✓ FULLY COMPLIANT
+          </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+          <!-- Hardhat -->
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>Safety Hardhat / Helmet</span>
+              <span id="helmetConfLabel" style="color: var(--success); font-weight: 700;">VERIFIED (96%)</span>
+            </div>
+            <div style="height: 5px; background: #27272a; border-radius: 3px; overflow: hidden;">
+              <div id="helmetConfBar" style="width: 96%; height: 100%; background: var(--success);"></div>
+            </div>
+          </div>
+
+          <!-- High-Vis Vest -->
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>Reflective High-Vis Vest</span>
+              <span id="vestConfLabel" style="color: var(--success); font-weight: 700;">VERIFIED (92%)</span>
+            </div>
+            <div style="height: 5px; background: #27272a; border-radius: 3px; overflow: hidden;">
+              <div id="vestConfBar" style="width: 92%; height: 100%; background: var(--success);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Factory Summary Metrics -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 10px; color: var(--text-dim);">ACTIVE WORKERS</div>
+          <div style="font-size: 20px; font-weight: 800; font-family: var(--font-mono); margin-top: 2px;">4</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 10px; color: var(--text-dim);">COMPLIANCE RATE</div>
+          <div style="font-size: 20px; font-weight: 800; font-family: var(--font-mono); color: var(--success); margin-top: 2px;" id="complianceRateVal">100%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Safety Ledger Persist Status -->
+    <div style="padding: 10px; border-radius: 4px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); font-size: 11px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span style="color: var(--text-dim);">OSHA Audit Trail:</span>
+        <span style="color: var(--primary); font-weight: 700;">ACTIVE LOGGING</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-dim);">Violation Snapshot Auto-Capture:</span>
+        <span style="color: var(--success); font-weight: 700;">ENABLED</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/domain_industrial.js"></script>
+{% endblock %}

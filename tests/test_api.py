@@ -13,12 +13,18 @@ def test_dashboard_root_html_route():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Smart CCTV Manager" in response.text
+    assert "Universal Smart Vision" in response.text
 
 def test_dashboard_html_subpages():
-    """Verifies all dashboard UI subpages return HTTP 200."""
+    """Verifies all dashboard UI subpages and dedicated domain pages return HTTP 200."""
     client = TestClient(app)
-    for path in ["/vision-lab", "/showcase", "/cameras", "/people-intelligence", "/zone-analytics", "/events", "/employees", "/enrollment", "/analytics", "/settings"]:
+    paths = [
+        "/domain/security", "/domain/industrial", "/domain/healthcare",
+        "/domain/traffic", "/domain/retail", "/domain/driver-safety", "/domain/people",
+        "/vision-lab", "/showcase", "/cameras", "/people-intelligence",
+        "/zone-analytics", "/events", "/employees", "/enrollment", "/analytics", "/settings"
+    ]
+    for path in paths:
         response = client.get(path)
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
@@ -214,4 +220,39 @@ def test_api_face_enrollment_pipeline():
     assert data["success"] is True
     assert data["employee_code"] == "TEST-OFFICER-01"
     assert data["total_samples"] >= 1
+
+def test_api_explainable_threat_scoring():
+    """Validates decomposed, factor-based explainable threat calculation."""
+    client = TestClient(app)
+    payload = {
+        "track_id": 42,
+        "is_restricted_zone": True,
+        "zone_name": "High Voltage Substation",
+        "stationary_duration": 18.5,
+        "has_weapon_indicator": True,
+        "weapon_type": "Firearm",
+        "fall_stage": "NORMAL",
+        "is_off_hours": False
+    }
+    res = client.post("/api/security/assess-threat", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["threat_score"] >= 75
+    assert data["threat_level"] == "CRITICAL"
+    assert len(data["factors"]) >= 3
+    # Check explainable factor breakdown
+    factor_codes = [f["code"] for f in data["factors"]]
+    assert "ZONE_INTRUSION" in factor_codes
+    assert "WEAPON_SIGNATURE" in factor_codes
+    assert "PROLONGED_LOITERING" in factor_codes
+
+def test_api_scheduler_metrics():
+    """Validates runtime metrics from priority inference scheduler."""
+    client = TestClient(app)
+    res = client.get("/api/scheduler/stats")
+    assert res.status_code == 200
+    data = res.json()
+    assert "tier1_critical_rate" in data
+    assert "load_scale" in data
+    assert data["scheduler_healthy"] is True
 

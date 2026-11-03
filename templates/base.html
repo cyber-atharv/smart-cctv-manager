@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Smart CCTV Manager | PBL Prototype{% endblock %}</title>
+  <title>{% block title %}Universal Smart Vision (USV) | Multi-Domain AI Platform{% endblock %}</title>
   
   <!-- Modern Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,53 +22,64 @@
   <!-- Sidebar Navigation -->
   <aside class="sidebar">
     <div class="brand-header">
-      <div class="brand-icon">📹</div>
+      <div class="brand-icon">🌐</div>
       <div>
-        <div class="brand-title">Smart CCTV Manager</div>
-        <div class="brand-subtitle">PBL Prototype • DYPCET</div>
+        <div class="brand-title">Universal Smart Vision</div>
+        <div class="brand-subtitle">USV AI Platform • DYPCET</div>
       </div>
     </div>
 
     <ul class="nav-links">
+      <li class="nav-header" style="padding: 6px 14px; font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em;">Operations</li>
       <li class="nav-item {% if request.url.path == '/' %}active{% endif %}">
-        <a href="/"><span>📊</span> Dashboard</a>
+        <a href="/"><span>📊</span> Central Operations</a>
       </li>
+      <li class="nav-item {% if request.url.path == '/cameras' %}active{% endif %}">
+        <a href="/cameras"><span>🎥</span> Multi-Cam Fleet</a>
+      </li>
+
+      <li class="nav-header" style="padding: 10px 14px 4px; font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em;">AI Intelligence Domains</li>
+      <li class="nav-item {% if request.url.path == '/domain/security' %}active{% endif %}">
+        <a href="/domain/security"><span>🛡️</span> Security & Threat</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/industrial' %}active{% endif %}">
+        <a href="/domain/industrial"><span>🦺</span> Industrial Safety</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/healthcare' %}active{% endif %}">
+        <a href="/domain/healthcare"><span>🏥</span> Healthcare & Falls</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/traffic' %}active{% endif %}">
+        <a href="/domain/traffic"><span>🚦</span> Traffic & Transport</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/retail' %}active{% endif %}">
+        <a href="/domain/retail"><span>🛒</span> Retail & Footfall</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/driver-safety' %}active{% endif %}">
+        <a href="/domain/driver-safety"><span>🚗</span> Driver Safety</a>
+      </li>
+      <li class="nav-item {% if request.url.path == '/domain/people' %}active{% endif %}">
+        <a href="/domain/people"><span>👤</span> People Intelligence</a>
+      </li>
+
+      <li class="nav-header" style="padding: 10px 14px 4px; font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em;">Audit & Labs</li>
       <li class="nav-item {% if request.url.path == '/vision-lab' %}active{% endif %}">
-        <a href="/vision-lab" style="color: var(--primary); font-weight: 700;"><span>🔬</span> AI Vision Lab</a>
+        <a href="/vision-lab" style="color: var(--primary); font-weight: 600;"><span>🔬</span> AI Vision Lab</a>
       </li>
       <li class="nav-item {% if request.url.path == '/showcase' %}active{% endif %}">
         <a href="/showcase" style="color: #38bdf8;"><span>🎬</span> Video Showcase</a>
       </li>
-      <li class="nav-item {% if request.url.path == '/cameras' %}active{% endif %}">
-        <a href="/cameras"><span>🎥</span> Camera Fleet</a>
-      </li>
-      <li class="nav-item {% if request.url.path == '/people-intelligence' %}active{% endif %}">
-        <a href="/people-intelligence"><span>🧠</span> People Intelligence</a>
-      </li>
-      <li class="nav-item {% if request.url.path == '/zone-analytics' %}active{% endif %}">
-        <a href="/zone-analytics"><span>🎯</span> Zone & Multi-Domain AI</a>
-      </li>
       <li class="nav-item {% if request.url.path == '/events' %}active{% endif %}">
-        <a href="/events"><span>🚨</span> Safety Events</a>
-      </li>
-      <li class="nav-item {% if request.url.path == '/employees' %}active{% endif %}">
-        <a href="/employees"><span>👥</span> Employees</a>
-      </li>
-      <li class="nav-item {% if request.url.path == '/enrollment' %}active{% endif %}">
-        <a href="/enrollment"><span>🆔</span> Face Enrollment</a>
-      </li>
-      <li class="nav-item {% if request.url.path == '/analytics' %}active{% endif %}">
-        <a href="/analytics"><span>📈</span> ML Analytics</a>
+        <a href="/events"><span>🚨</span> Safety Ledger</a>
       </li>
       <li class="nav-item {% if request.url.path == '/settings' %}active{% endif %}">
-        <a href="/settings"><span>⚙️</span> Settings</a>
+        <a href="/settings"><span>⚙️</span> System Settings</a>
       </li>
     </ul>
 
     <div class="sidebar-footer">
-      <div>Project: <strong>Smart CCTV Manager</strong></div>
-      <div style="margin-top: 4px; color: var(--text-dim);">PBL Day 2026 • Dept. CSE(AIML)</div>
-      <div style="margin-top: 2px; color: var(--primary);">DYPCET Kolhapur</div>
+      <div>Platform: <strong>Universal Smart Vision</strong></div>
+      <div style="margin-top: 4px; color: var(--text-dim);">Atharv & Team • Dept. CSE(AIML)</div>
+      <div style="margin-top: 2px; color: var(--primary);">DYPCET Kolhapur • PBL Day 2026</div>
     </div>
   </aside>
 

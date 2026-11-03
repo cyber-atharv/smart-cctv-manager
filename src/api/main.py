@@ -287,6 +287,34 @@ def page_analytics(request: Request):
         context={}
     )
 
+@app.get("/domain/security", response_class=HTMLResponse)
+def page_domain_security(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_security.html", context={})
+
+@app.get("/domain/industrial", response_class=HTMLResponse)
+def page_domain_industrial(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_industrial.html", context={})
+
+@app.get("/domain/healthcare", response_class=HTMLResponse)
+def page_domain_healthcare(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_healthcare.html", context={})
+
+@app.get("/domain/traffic", response_class=HTMLResponse)
+def page_domain_traffic(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_traffic.html", context={})
+
+@app.get("/domain/retail", response_class=HTMLResponse)
+def page_domain_retail(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_retail.html", context={})
+
+@app.get("/domain/driver-safety", response_class=HTMLResponse)
+def page_domain_driver_safety(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_driver_safety.html", context={})
+
+@app.get("/domain/people", response_class=HTMLResponse)
+def page_domain_people(request: Request):
+    return templates.TemplateResponse(request=request, name="domain_people.html", context={})
+
 @app.get("/vision-lab", response_class=HTMLResponse)
 def page_vision_lab(request: Request):
     return templates.TemplateResponse(
@@ -494,6 +522,27 @@ def get_camera_status(camera_id: str):
         "active_tracks": worker.stats.get("active_tracks", 0),
         "tracks": worker.current_tracks_info
     }
+
+@app.post("/api/security/assess-threat")
+def assess_security_threat(payload: Dict[str, Any] = Body(...)):
+    """Computes transparent, explainable threat score from itemized factors."""
+    from src.security.threat_engine import threat_engine
+    return threat_engine.assess_track(
+        track_id=payload.get("track_id", 1),
+        is_restricted_zone=payload.get("is_restricted_zone", False),
+        zone_name=payload.get("zone_name", ""),
+        stationary_duration=payload.get("stationary_duration", 0.0),
+        has_weapon_indicator=payload.get("has_weapon_indicator", False),
+        weapon_type=payload.get("weapon_type", ""),
+        fall_stage=payload.get("fall_stage", "NORMAL"),
+        is_off_hours=payload.get("is_off_hours", False)
+    )
+
+@app.get("/api/scheduler/stats")
+def get_scheduler_metrics():
+    """Returns runtime metrics from Priority Inference Scheduler."""
+    from src.scheduler.inference_scheduler import inference_scheduler
+    return inference_scheduler.get_stats()
 
 # ==================== PEOPLE INTELLIGENCE API ====================
 

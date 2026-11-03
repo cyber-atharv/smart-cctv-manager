@@ -50,3 +50,7 @@ storage/face_db/*
 
 # Large pre-trained base models (auto-downloaded by Ultralytics on first run)
 *.pt
+
+# Local Backups and Databases
+_backup_*/
+*.db

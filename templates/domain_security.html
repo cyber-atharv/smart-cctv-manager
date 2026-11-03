@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Security & Threat Intelligence | Universal Smart Vision{% endblock %}
+{% block page_title %}Security & Defence Intelligence{% endblock %}
+
+{% block content %}
+<!-- Domain Header & Threat Status Banner -->
+<div class="card" style="padding: 16px 20px; margin-bottom: 20px; border-left: 4px solid var(--danger);">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="badge badge-danger">DEFENCE & PERIMETER</span>
+        <h2 style="font-size: 18px; font-weight: 700; margin: 0;">Multi-Threat & Perimeter Intrusion Engine</h2>
+      </div>
+      <p style="font-size: 12px; color: var(--text-dim); margin: 4px 0 0 0;">
+        Real-Time Weapon Detection (COCO/YOLO) • Virtual Tripwire Intrusion • Loitering Anomaly • Decomposed Explainable Threat Scoring
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-danger" onclick="simulateSecurityThreat('weapon')">⚡ Simulate Weapon Anomaly</button>
+      <button class="btn btn-outline" onclick="simulateSecurityThreat('intrusion')">⚡ Simulate Boundary Breach</button>
+      <button class="btn btn-outline" onclick="resetSecurityState()">↺ Reset Sensors</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Split: Video Viewport & Explainable Threat Breakdown Panel -->
+<div class="vision-lab-grid" style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin-bottom: 20px;">
+  <!-- Left: Security Stream Container -->
+  <div class="card" style="padding: 18px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div style="font-size: 14px; font-weight: 700;">Live Sensor Viewport (CAM-01 / Feed)</div>
+      <span class="badge badge-live" id="secBadge"><span class="pulsing-dot-green"></span> ACTIVE SCANNING</span>
+    </div>
+
+    <div style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
+      <video id="secVideo" autoplay playsinline muted style="display: none;"></video>
+      <canvas id="secCanvas" width="800" height="450" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
+
+      <!-- Overlay HUD -->
+      <div style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-color);">
+        <span style="color: var(--primary);">SENSOR: OPTICAL EO/IR</span> | <span id="secFps">60 FPS</span>
+      </div>
+
+      <!-- Perimeter Tripwire Label Overlay -->
+      <div style="position: absolute; bottom: 12px; right: 12px; background: rgba(220, 38, 38, 0.2); border: 1px solid var(--danger); padding: 4px 10px; border-radius: 4px; font-size: 11px; color: var(--danger); font-weight: 700;">
+        VIRTUAL TRIPWIRE ZONE: ARMED
+      </div>
+    </div>
+
+    <!-- Quick Camera / Demo Switcher -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 12px;">
+      <div style="color: var(--text-dim);">Source: Local Hardware Camera + Simulated Synthetic Intrusion Stream</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-outline" style="font-size: 11px; padding: 4px 10px;" onclick="startSecurityCam()">📹 Connect Local Cam</button>
+        <button class="btn btn-outline" style="font-size: 11px; padding: 4px 10px;" onclick="loadSecurityClip()">🎬 Load Perimeter Clip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Explainable Composite Threat Score Engine -->
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">Decomposed Threat Score Engine</div>
+      <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 14px;">
+        Itemized causal indicators (No arbitrary black-box scores).
+      </p>
+
+      <!-- Threat Dial Meter -->
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 14px; text-align: center; margin-bottom: 16px;">
+        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Composite Threat Index</div>
+        <div style="font-size: 38px; font-weight: 800; font-family: var(--font-mono); margin: 4px 0;" id="threatScoreVal" style="color: var(--success);">
+          15<span style="font-size: 18px; color: var(--text-dim);">/100</span>
+        </div>
+        <div style="display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; background: rgba(34, 197, 94, 0.15); color: var(--success);" id="threatBadge">
+          ● NORMAL SURVEILLANCE
+        </div>
+        <div style="margin-top: 10px; height: 6px; background: #27272a; border-radius: 3px; overflow: hidden;">
+          <div id="threatProgressBar" style="width: 15%; height: 100%; background: var(--success); transition: width 0.4s ease, background 0.4s ease;"></div>
+        </div>
+      </div>
+
+      <!-- Itemized Observable Factors List -->
+      <div style="font-size: 12px; font-weight: 700; margin-bottom: 8px;">Explainable Contributing Factors</div>
+      <div id="threatFactorsList" style="display: flex; flex-direction: column; gap: 8px;">
+        <div class="threat-factor-row" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 4px; border-left: 3px solid var(--primary); font-size: 11px;">
+          <div>
+            <div style="font-weight: 600;">Subject in Field of View</div>
+            <div style="color: var(--text-dim); font-size: 10px;">Baseline visual track #1 active</div>
+          </div>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--primary);">+5 pts</span>
+        </div>
+
+        <div class="threat-factor-row" id="factorIntrusion" style="display: none; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.08); padding: 8px 10px; border-radius: 4px; border-left: 3px solid var(--danger); font-size: 11px;">
+          <div>
+            <div style="font-weight: 600; color: var(--danger);">Restricted Boundary Breach</div>
+            <div style="color: var(--text-dim); font-size: 10px;">Subject crossed perimeter line</div>
+          </div>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--danger);">+35 pts</span>
+        </div>
+
+        <div class="threat-factor-row" id="factorWeapon" style="display: none; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.08); padding: 8px 10px; border-radius: 4px; border-left: 3px solid var(--danger); font-size: 11px;">
+          <div>
+            <div style="font-weight: 600; color: var(--danger);">Weapon Signature Identified</div>
+            <div style="color: var(--text-dim); font-size: 10px;">YOLO detector: Handheld firearm (91%)</div>
+          </div>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--danger);">+35 pts</span>
+        </div>
+
+        <div class="threat-factor-row" id="factorLoitering" style="display: none; justify-content: space-between; align-items: center; background: rgba(245, 158, 11, 0.08); padding: 8px 10px; border-radius: 4px; border-left: 3px solid var(--warning); font-size: 11px;">
+          <div>
+            <div style="font-weight: 600; color: var(--warning);">Suspicious Stationary Loitering</div>
+            <div style="color: var(--text-dim); font-size: 10px;">Dwell time exceeded 15.0s threshold</div>
+          </div>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--warning);">+20 pts</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alarm Dispatch Summary -->
+    <div style="margin-top: 16px; padding: 10px; border-radius: 4px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); font-size: 11px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span style="color: var(--text-dim);">Automated Dispatch:</span>
+        <span style="font-weight: 700;" id="secDispatchStatus">STANDBY</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-dim);">Incident Ledger Sync:</span>
+        <span style="color: var(--success); font-weight: 700;">SQLITE ATOMIC ACTIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Architecture & Reference Notes -->
+<div class="card" style="padding: 16px 20px;">
+  <h3 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">Algorithmic Architecture Reference</h3>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+    <div>
+      <strong style="color: var(--text-main);">1. Ultralytics YOLOv8 Weapon Weights:</strong><br>
+      Trained on COCO and weapon subsets (pistols, knives). Classifies handheld bounding boxes in 15ms via 320x320 tensor downsampling.
+    </div>
+    <div>
+      <strong style="color: var(--text-main);">2. Vector Polygon Tripwire:</strong><br>
+      Computes cross-product ray intersections between consecutive track centroid vectors and user-defined boundary line coordinates.
+    </div>
+    <div>
+      <strong style="color: var(--text-main);">3. Explainability Guarantee:</strong><br>
+      No arbitrary deep learning threat scores. The composite score is mathematically derived from discrete boolean events, allowing human security audits.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/domain_security.js"></script>
+{% endblock %}
