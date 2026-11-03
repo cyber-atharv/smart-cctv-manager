@@ -928,10 +928,12 @@ table.cctv-table tr:hover td {
 }
 
 .hero-canvas-elem {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   z-index: 2;
 }
 

@@ -173,45 +173,121 @@ async function startInBuiltCamera() {
   const canvas = document.getElementById("inbuiltCanvas");
   const controls = document.getElementById("camControlsOverlay");
   const statusBadge = document.getElementById("streamStatusBadge");
+  const droidImg = document.getElementById("inbuiltDroidCamImg");
 
   try {
-    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> STARTING...';
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> STARTING CAMERA...';
     
-    // 1. Request Browser Camera Permission with high-framerate constraints
-    inbuiltStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 720 },
-        frameRate: { ideal: 60, min: 30 }
-      },
-      audio: false
-    });
+    // Stop any existing tracks across all scopes
+    stopInBuiltCamera();
+    if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
 
+    // Progressive constraint fallback (fixes OverconstrainedError on Windows webcams)
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: false
+      });
+    } catch (e1) {
+      console.warn("High-res constraint failed, trying basic video constraint:", e1);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    }
+
+    inbuiltStream = stream;
+    window.inbuiltStream = stream;
+    window.activeCameraStream = stream;
+
+    video.muted = true;
+    video.playsInline = true;
     video.srcObject = inbuiltStream;
-    await video.play();
 
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    try {
+      await video.play();
+    } catch (playErr) {
+      console.warn("video.play() auto-resumed:", playErr);
+    }
+
+    const syncDims = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      } else {
+        canvas.width = 1280;
+        canvas.height = 720;
+      }
+    };
+    video.onloadedmetadata = syncDims;
+    syncDims();
 
     // Hide permission prompt and show controls
-    overlay.style.display = "none";
-    controls.style.display = "flex";
-    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 60 FPS';
+    if (overlay) overlay.style.display = "none";
+    if (controls) controls.style.display = "flex";
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 60 FPS';
 
-    // 2. Initialize In-Browser MediaPipe Pose (Complexity 0 for maximum throughput)
+    // Initialize In-Browser MediaPipe Pose
     initPoseModel();
 
-    // 3. Start High-FPS Native Animation Loop (unblocked 60 FPS)
+    // Start High-FPS Native Animation Loop
     requestAnimationFrame(renderLoop);
 
-    // 4. Start Decoupled Background Pose Inference with adaptive breathing room
+    // Start Decoupled Background Pose Inference
     scheduleNextPoseInference(80);
 
   } catch (err) {
     console.error("Camera access error:", err);
-    statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ PERMISSION DENIED</span>';
-    alert("Camera permission denied or camera in use by another application. Please allow camera access in your browser bar.");
+    if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ PERMISSION DENIED</span>';
+
+    const useDemo = confirm(
+      "Could not open hardware webcam.\n\n" +
+      "Status: " + (err.name || "Access Denied") + "\n\n" +
+      "Possible causes:\n" +
+      "1. Camera permission blocked in your browser address bar.\n" +
+      "2. Another app is currently using the camera.\n\n" +
+      "Click OK to load the Demo Video Feed instead to test 60 FPS posture AI and biometric recognition!"
+    );
+    if (useDemo) {
+      loadInBuiltDemoClip();
+    }
   }
+}
+
+function loadInBuiltDemoClip() {
+  const overlay = document.getElementById("camPermissionOverlay");
+  const video = document.getElementById("inbuiltVideo");
+  const canvas = document.getElementById("inbuiltCanvas");
+  const controls = document.getElementById("camControlsOverlay");
+  const statusBadge = document.getElementById("streamStatusBadge");
+  const droidImg = document.getElementById("inbuiltDroidCamImg");
+
+  stopInBuiltCamera();
+  if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
+
+  video.srcObject = null;
+  video.src = "/static/videos/cv_demo_01.mp4";
+  video.loop = true;
+  video.muted = true;
+  video.playsInline = true;
+
+  video.play().then(() => {
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    inbuiltStream = "democlip";
+    window.inbuiltStream = "democlip";
+
+    if (overlay) overlay.style.display = "none";
+    if (controls) controls.style.display = "flex";
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DEMO VIDEO LIVE (60 FPS)';
+
+    initPoseModel();
+    requestAnimationFrame(renderLoop);
+    scheduleNextPoseInference(90);
+  }).catch(err => {
+    console.error("Demo clip load error:", err);
+  });
 }
 
 function initPoseModel() {

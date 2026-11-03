@@ -217,7 +217,7 @@ async function startLabCamera() {
     let stream = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60, min: 30 } },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
         audio: false
       });
     } catch (e1) {
@@ -233,6 +233,8 @@ async function startLabCamera() {
     window.visionLabStream = stream;
     window.labDroidcamImg = null;
 
+    video.muted = true;
+    video.playsInline = true;
     video.srcObject = labStream;
     try {
       await video.play();
