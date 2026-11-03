@@ -38,6 +38,8 @@ class PoseEstimator:
         self.backend_name = "Geometric Fallback"
         self.yolo_pose = None
         self.mp_pose = None
+        self._last_frame_ref = None
+        self._cached_results = None
 
         # 1. Attempt to load YOLOv8-Pose model
         try:
@@ -85,8 +87,13 @@ class PoseEstimator:
         # 1. YOLOv8-Pose Execution
         if self.yolo_pose is not None:
             try:
-                # Run YOLO-Pose inference
-                results = self.yolo_pose(frame, verbose=False, conf=self.min_detection_confidence)
+                # Run YOLO-Pose inference (cached per frame with optimized 320x320 imgsz for real-time 30+ FPS)
+                if self._last_frame_ref is frame and self._cached_results is not None:
+                    results = self._cached_results
+                else:
+                    results = self.yolo_pose(frame, imgsz=320, verbose=False, conf=self.min_detection_confidence)
+                    self._last_frame_ref = frame
+                    self._cached_results = results
                 if results and len(results) > 0 and results[0].keypoints is not None:
                     kpts_data = results[0].keypoints
                     if kpts_data.xy is not None and len(kpts_data.xy) > 0:

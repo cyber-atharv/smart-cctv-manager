@@ -65,6 +65,7 @@ class VisionPipelineWorker:
         self.latest_raw_frame = None
         self.latest_annotated_frame = None
         self.current_tracks_info = []
+        self._cached_track_landmarks = {}
         self.stats = {
             "fps": 0.0,
             "total_frames": 0,
@@ -160,11 +161,14 @@ class VisionPipelineWorker:
                 finally:
                     db_sync.close()
 
-            # 1. Person Detection (YOLO on real frame)
-            detections = self.detector.detect(raw_frame)
-
-            # 2. Multi-Object Tracking
-            active_tracks = self.tracker.update(detections)
+            # 1. Person Detection (Adaptive Subsampling for High-Framerate 30 FPS Smooth Video)
+            # Run heavy YOLO detection every 2nd frame or when tracks are empty
+            should_detect = (frame_counter % 2 == 0) or (len(self.tracker.tracks) == 0)
+            if should_detect:
+                detections = self.detector.detect(raw_frame)
+                active_tracks = self.tracker.update(detections)
+            else:
+                active_tracks = self.tracker.get_active_tracks()
 
             annotated = raw_frame.copy()
             h, w = annotated.shape[:2]
@@ -174,9 +178,13 @@ class VisionPipelineWorker:
             track_landmarks = {}
             track_features = {}
             for track in active_tracks:
-                # 3.1 Pose Estimation
-                pose_data = self.pose_estimator.estimate(raw_frame, bbox=track.bbox)
-                landmarks = pose_data["landmarks"] if pose_data else {}
+                # 3.1 Pose Estimation (run on detection frames or if not yet cached)
+                if should_detect or track.track_id not in self._cached_track_landmarks:
+                    pose_data = self.pose_estimator.estimate(raw_frame, bbox=track.bbox)
+                    landmarks = pose_data["landmarks"] if pose_data else {}
+                    self._cached_track_landmarks[track.track_id] = landmarks
+                else:
+                    landmarks = self._cached_track_landmarks.get(track.track_id, {})
                 track_landmarks[track.track_id] = landmarks
 
                 # 3.2 Feature Extraction
@@ -210,9 +218,10 @@ class VisionPipelineWorker:
                     if emp_id is not None:
                         track.set_identity(emp_id, emp_code, emp_name, face_conf)
 
-                # 3.6 PPE (Personal Protective Equipment) Inspection
-                ppe_data = self.ppe_detector.detect_ppe(raw_frame, bbox=track.bbox, landmarks=landmarks)
-                track.set_ppe_status(ppe_data)
+                # 3.6 PPE (Personal Protective Equipment) Inspection (only on detection frames)
+                if should_detect:
+                    ppe_data = self.ppe_detector.detect_ppe(raw_frame, bbox=track.bbox, landmarks=landmarks)
+                    track.set_ppe_status(ppe_data)
 
                 # 3.7 Event Trigger on Confirmed Fall Incident
                 if should_trigger_event:
@@ -457,12 +466,13 @@ class VisionPipelineWorker:
             return None
 
     def get_mjpeg_generator(self, mode: str = "ai"):
-        """Yields MJPEG multipart frame stream for browser HTML5 <img> embedding."""
-        interval = 1.0 / max(5, float(self.fps))
+        """Yields MJPEG multipart frame stream for browser HTML5 <img> embedding at smooth 25–30 FPS."""
+        target_stream_fps = max(25.0, float(self.fps))
+        interval = 1.0 / target_stream_fps
         while self.running:
             frame = self.get_latest_frame(mode=mode)
             if frame is not None:
-                ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+                ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
                 if ret:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')

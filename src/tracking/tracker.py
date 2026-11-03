@@ -163,6 +163,10 @@ class MultiObjectTracker:
         self.next_track_id = 1
         self.tracks: Dict[int, TrackedPerson] = {}
 
+    def get_active_tracks(self) -> List[TrackedPerson]:
+        """Returns recently tracked individuals for intermediate smooth rendering without re-detection."""
+        return [t for t in self.tracks.values() if t.time_since_update <= 3]
+
     def update(self, detections: List[Dict[str, Any]]) -> List[TrackedPerson]:
         """
         Matches incoming person detections with active tracks using IoU & distance metrics.

@@ -30,8 +30,13 @@ const SKELETON_BONES = [
 let offscreenCanvas = null;
 let offscreenCtx = null;
 let isPoseProcessing = false;
-let poseIntervalTimer = null;
+let poseTimeoutTimer = null;
 let latestFeatures = null;
+
+function scheduleNextPoseInference(delay = 100) {
+  if (poseTimeoutTimer) clearTimeout(poseTimeoutTimer);
+  poseTimeoutTimer = setTimeout(runDecoupledPoseInference, delay);
+}
 
 async function startInBuiltCamera() {
   const overlay = document.getElementById("camPermissionOverlay");
@@ -43,12 +48,12 @@ async function startInBuiltCamera() {
   try {
     statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> STARTING...';
     
-    // 1. Request Browser Camera Permission
+    // 1. Request Browser Camera Permission with high-framerate constraints
     inbuiltStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: "user"
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 },
+        frameRate: { ideal: 60, min: 30 }
       },
       audio: false
     });
@@ -73,9 +78,8 @@ async function startInBuiltCamera() {
     // 3. Start High-FPS Native Animation Loop (unblocked 60 FPS)
     requestAnimationFrame(renderLoop);
 
-    // 4. Start Decoupled Background Pose Inference (~16 ticks/sec on downscaled buffer)
-    if (poseIntervalTimer) clearInterval(poseIntervalTimer);
-    poseIntervalTimer = setInterval(runDecoupledPoseInference, 60);
+    // 4. Start Decoupled Background Pose Inference with adaptive breathing room
+    scheduleNextPoseInference(80);
 
   } catch (err) {
     console.error("Camera access error:", err);
@@ -128,7 +132,16 @@ function renderLoop() {
   if (now - fpsLastTime >= 1000) {
     const fps = Math.round((fpsCount * 1000) / (now - fpsLastTime));
     const fpsStat = document.getElementById("fpsStatVal");
-    if (fpsStat) fpsStat.textContent = `${fps} FPS`;
+    if (fpsStat) {
+      fpsStat.textContent = `${fps} FPS`;
+      if (fps >= 45) {
+        fpsStat.style.color = "var(--success)";
+      } else if (fps >= 25) {
+        fpsStat.style.color = "var(--primary)";
+      } else {
+        fpsStat.style.color = "var(--warning)";
+      }
+    }
     fpsCount = 0;
     fpsLastTime = now;
   }
@@ -141,20 +154,28 @@ function renderLoop() {
   requestAnimationFrame(renderLoop);
 }
 
-// Decoupled Background Pose Inference (Runs on 480x270 offscreen buffer without stalling renderLoop)
+// Decoupled Background Pose Inference (Runs on 320x180 offscreen buffer without stalling renderLoop)
 async function runDecoupledPoseInference() {
-  if (!inbuiltStream || !isAIActive || !poseDetector || isBackendMode || isPoseProcessing) {
+  if (!inbuiltStream || !isAIActive || !poseDetector || isBackendMode) {
+    scheduleNextPoseInference(120);
+    return;
+  }
+  if (isPoseProcessing) {
+    scheduleNextPoseInference(50);
     return;
   }
 
   const video = document.getElementById("inbuiltVideo");
-  if (!video || video.readyState < 2) return;
+  if (!video || video.readyState < 2) {
+    scheduleNextPoseInference(120);
+    return;
+  }
 
   if (!offscreenCanvas) {
     offscreenCanvas = document.createElement("canvas");
-    offscreenCanvas.width = 480;
-    offscreenCanvas.height = 270;
-    offscreenCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
+    offscreenCanvas.width = 320;
+    offscreenCanvas.height = 180;
+    offscreenCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true, alpha: false });
   }
 
   isPoseProcessing = true;
@@ -165,6 +186,8 @@ async function runDecoupledPoseInference() {
     // Continue loop
   } finally {
     isPoseProcessing = false;
+    // Guaranteed breathing room: leaves browser thread 100% unblocked for 60 FPS rendering
+    scheduleNextPoseInference(90);
   }
 }
 
@@ -183,9 +206,9 @@ function onPoseResults(results) {
   // 2. Update real-time HUD telemetry meters
   updateTelemetryGauges(features);
 
-  // 3. Dispatch non-blocking asynchronous ML prediction (~7 calls/sec)
+  // 3. Dispatch non-blocking asynchronous ML prediction (~4 calls/sec)
   const nowMs = performance.now();
-  if (!predictInFlight && (nowMs - lastPredictTime >= 130)) {
+  if (!predictInFlight && (nowMs - lastPredictTime >= 240)) {
     predictInFlight = true;
     lastPredictTime = nowMs;
 
