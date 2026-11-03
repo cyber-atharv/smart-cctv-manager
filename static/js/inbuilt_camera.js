@@ -140,9 +140,6 @@ async function promptConnectDroidCam() {
   targetImg.src = proxyUrl;
 }
 
-  img.src = proxyUrl;
-}
-
 // Fall verification state
 let consecutiveFloorReadings = 0;
 let hasDispatchedIncident = false;
