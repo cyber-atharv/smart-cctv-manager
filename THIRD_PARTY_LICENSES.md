@@ -61,3 +61,4 @@ Universal Smart Vision draws algorithmic insights and architectural references f
 6. **CCTV Video Anomaly Detection** (`saadkhan2003/CCTV_Video_Anomaly_Detection`): OpenVINO / edge anomaly detection concepts.
 
 All visual templates, styling, biomechanical invariants, UI components, and domain routing have been independently engineered by the authors for Universal Smart Vision.
+

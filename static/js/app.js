@@ -629,10 +629,73 @@ async function updateHomeMultiDomainChips() {
   }
 }
 
+// ==================== UNIVERSAL PER-PAGE HARDWARE CAMERA LIFECYCLE TEARDOWN ====================
+// Guarantees that when navigating away to another page or tab, the camera hardware track is
+// IMMEDIATELY stopped and the camera light turns off. The new page starts clean in Standby mode.
+function stopAllActiveMediaTracks() {
+  console.log("[Camera Lifecycle] Executing strict per-page camera hardware release...");
+  
+  // 1. Terminate all MediaStream tracks across all global references
+  const candidateStreams = [
+    window.inbuiltStream,
+    window.secStream,
+    window.indStream,
+    window.visionLabStream,
+    window.peopleStream,
+    window.activeCameraStream
+  ];
+
+  candidateStreams.forEach(stream => {
+    if (stream && typeof stream.getTracks === "function") {
+      stream.getTracks().forEach(track => {
+        try {
+          track.stop();
+          console.log("[Camera Lifecycle] Stopped hardware track:", track.label);
+        } catch (e) {}
+      });
+    }
+  });
+
+  window.inbuiltStream = null;
+  window.secStream = null;
+  window.indStream = null;
+  window.visionLabStream = null;
+  window.peopleStream = null;
+  window.activeCameraStream = null;
+
+  // 2. Pause and detach all HTML video stream elements
+  document.querySelectorAll("video").forEach(v => {
+    try {
+      v.pause();
+      v.srcObject = null;
+      v.src = "";
+    } catch (e) {}
+  });
+
+  // 3. Clear inference timers
+  if (window.poseTimeoutTimer) {
+    clearTimeout(window.poseTimeoutTimer);
+    window.poseTimeoutTimer = null;
+  }
+}
+
+window.addEventListener("beforeunload", stopAllActiveMediaTracks);
+window.addEventListener("pagehide", stopAllActiveMediaTracks);
+
 document.addEventListener("DOMContentLoaded", () => {
   initAlertWebSocket();
   updatePeopleIntelligence();
   updateHomeMultiDomainChips();
   setInterval(updatePeopleIntelligence, 2000);
   setInterval(updateHomeMultiDomainChips, 2500);
+
+  // Hook all navigation links to release webcam hardware before navigating away
+  document.querySelectorAll("a[href]").forEach(link => {
+    link.addEventListener("click", () => {
+      const href = link.getAttribute("href");
+      if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+        stopAllActiveMediaTracks();
+      }
+    });
+  });
 });

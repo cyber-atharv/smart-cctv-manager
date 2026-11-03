@@ -78,3 +78,4 @@ class PriorityInferenceScheduler:
         }
 
 inference_scheduler = PriorityInferenceScheduler()
+

@@ -90,3 +90,4 @@ function simulateFootfallEvent(direction) {
 document.addEventListener("DOMContentLoaded", () => {
   loadRetailClip();
 });
+

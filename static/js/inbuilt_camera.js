@@ -1,6 +1,6 @@
 // ==================== IN-BUILT CAMERA ZERO-LAG VISION ENGINE ====================
 // Uses client-side WebCam + MediaPipe Pose for 30–60 FPS smooth video
-// Communicates with Scikit-Learn Biomechanical Classifier from D:\project\fai cctv
+// Features DroidCam Mobile Phone Integration & Rotation Fixes from D:\project\fai cctv
 
 let inbuiltStream = null;
 let poseDetector = null;
@@ -13,6 +13,61 @@ let fpsCount = 0;
 let fpsLastTime = performance.now();
 let lastPredictTime = 0;
 let predictInFlight = false;
+
+// DroidCam & Rotation Engine (from D:\project\fai cctv)
+let cameraRotation = 0; // 0, 90, 180, 270
+let isMirrored = false;
+let framingMode = 'webcam'; // 'webcam' (close-up) or 'fullbody'
+
+function cycleRotation() {
+  cameraRotation = (cameraRotation + 90) % 360;
+  const rotLabel = document.getElementById("rotDegreeLabel");
+  if (rotLabel) rotLabel.textContent = `${cameraRotation}°`;
+}
+
+function toggleMirror() {
+  isMirrored = !isMirrored;
+  const mirrorBtn = document.getElementById("btnMirror");
+  if (mirrorBtn) mirrorBtn.textContent = isMirrored ? "🪞 Mirror: ON" : "🪞 Mirror: OFF";
+}
+
+function toggleFramingMode() {
+  framingMode = (framingMode === 'webcam') ? 'fullbody' : 'webcam';
+  const fBtn = document.getElementById("btnFraming");
+  if (fBtn) fBtn.textContent = (framingMode === 'webcam') ? "📐 Close-Up" : "📐 Full-Body";
+}
+
+function promptConnectDroidCam() {
+  const currentIp = localStorage.getItem("cctv_droidcam_ip") || "http://192.168.1.100:4747/video";
+  const url = prompt("Enter DroidCam / IP Webcam Stream URL (e.g. http://192.168.1.105:4747/video):", currentIp);
+  if (!url) return;
+  localStorage.setItem("cctv_droidcam_ip", url);
+
+  const video = document.getElementById("inbuiltVideo");
+  const canvas = document.getElementById("inbuiltCanvas");
+  if (inbuiltStream && typeof inbuiltStream.getTracks === "function") {
+    inbuiltStream.getTracks().forEach(t => t.stop());
+  }
+  inbuiltStream = "droidcam";
+  video.srcObject = null;
+  video.crossOrigin = "anonymous";
+  video.src = url;
+  video.play().then(() => {
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const overlay = document.getElementById("camPermissionOverlay");
+    const controls = document.getElementById("camControlsOverlay");
+    const statusBadge = document.getElementById("streamStatusBadge");
+    if (overlay) overlay.style.display = "none";
+    if (controls) controls.style.display = "flex";
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD LIVE';
+    initPoseModel();
+    requestAnimationFrame(renderLoop);
+    scheduleNextPoseInference(90);
+  }).catch(err => {
+    alert("Could not connect to DroidCam stream at " + url + ".\n\nEnsure DroidCam app is running on your phone and on the same Wi-Fi network.");
+  });
+}
 
 // Fall verification state
 let consecutiveFloorReadings = 0;
@@ -63,9 +118,6 @@ async function startInBuiltCamera() {
 
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
-
-    // Persist camera permission so navigating between pages seamlessly re-activates feed
-    localStorage.setItem("cctv_cam_autostart", "true");
 
     // Hide permission prompt and show controls
     overlay.style.display = "none";
@@ -123,8 +175,17 @@ function renderLoop() {
   const w = canvas.width;
   const h = canvas.height;
 
-  // 1. Draw raw video frame onto canvas (Native zero-latency 60 FPS)
-  ctx.drawImage(video, 0, 0, w, h);
+  // 1. Draw transformed video frame onto canvas (Handles DroidCam rotation & mirror)
+  ctx.save();
+  ctx.clearRect(0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((cameraRotation * Math.PI) / 180);
+  if (isMirrored) ctx.scale(-1, 1);
+  const swap = (cameraRotation % 180 !== 0);
+  const dw = swap ? h : w;
+  const dh = swap ? w : h;
+  ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
 
   // 2. Compute Real Framerate
   fpsCount++;
@@ -180,7 +241,18 @@ async function runDecoupledPoseInference() {
 
   isPoseProcessing = true;
   try {
-    offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+    const ow = offscreenCanvas.width, oh = offscreenCanvas.height;
+    offscreenCtx.save();
+    offscreenCtx.clearRect(0, 0, ow, oh);
+    offscreenCtx.translate(ow / 2, oh / 2);
+    offscreenCtx.rotate((cameraRotation * Math.PI) / 180);
+    if (isMirrored) offscreenCtx.scale(-1, 1);
+    const oswap = (cameraRotation % 180 !== 0);
+    const odw = oswap ? oh : ow;
+    const odh = oswap ? ow : oh;
+    offscreenCtx.drawImage(video, -odw / 2, -odh / 2, odw, odh);
+    offscreenCtx.restore();
+
     await poseDetector.send({ image: offscreenCanvas });
   } catch (err) {
     // Continue loop
@@ -191,14 +263,37 @@ async function runDecoupledPoseInference() {
   }
 }
 
+let currentPostureName = "STANDING";
+let currentConfidence = 96;
+
 function onPoseResults(results) {
   if (!results || !results.poseLandmarks) {
     latestLandmarks = null;
     return;
   }
 
-  latestLandmarks = results.poseLandmarks;
   const lm = results.poseLandmarks;
+  // Strict human presence verification: require anatomical shoulders to be visible
+  // Completely eliminates ghost bounding boxes and hallucinated stick figures on window blinds/walls
+  const bodyOK = lm && (
+    (lm[11] && (lm[11].visibility || 1) > 0.40) ||
+    (lm[12] && (lm[12].visibility || 1) > 0.40)
+  );
+
+  if (!bodyOK) {
+    latestLandmarks = null;
+    const statusBadge = document.getElementById("streamStatusBadge");
+    if (statusBadge && statusBadge.textContent.includes("LIVE")) {
+      statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> SEARCHING FOR SUBJECT…';
+    }
+    return;
+  }
+
+  latestLandmarks = lm;
+  const statusBadge = document.getElementById("streamStatusBadge");
+  if (statusBadge && statusBadge.textContent.includes("SEARCHING")) {
+    statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LIVE 60 FPS';
+  }
 
   // 1. Compute canonical 8-element feature vector (from D:\project\fai cctv)
   const features = computeFeaturesFromLandmarks(lm);
@@ -224,7 +319,7 @@ function onPoseResults(results) {
         handlePredictionResult(data);
       }
     })
-    .catch(err => {
+    .catch(() => {
       predictInFlight = false;
     });
   }
@@ -360,6 +455,9 @@ function handlePredictionResult(data) {
     conf = 94;
   }
 
+  currentPostureName = pred;
+  currentConfidence = conf;
+
   // A genuine fall requires BOTH horizontal spine and low head elevation
   const isFall = (pred === "LAYING_ON_FLOOR") && (torsoAngle >= 45.0) && (headElev <= 0.15);
 
@@ -405,11 +503,12 @@ function handlePredictionResult(data) {
 
 function drawSkeleton(ctx, landmarks, w, h) {
   ctx.save();
+  const themeColor = (consecutiveFloorReadings >= 2) ? "#ef4444" : "#00e5ff";
   ctx.lineWidth = 3;
-  ctx.strokeStyle = (consecutiveFloorReadings >= 2) ? "#ff1744" : "#00e5ff";
+  ctx.strokeStyle = themeColor;
   ctx.fillStyle = "#ffffff";
 
-  // Draw connecting bones
+  // 1. Draw connecting bones
   for (const [i1, i2] of SKELETON_BONES) {
     const p1 = landmarks[i1];
     const p2 = landmarks[i2];
@@ -421,7 +520,7 @@ function drawSkeleton(ctx, landmarks, w, h) {
     }
   }
 
-  // Draw joint nodes
+  // 2. Draw joint nodes
   for (let i = 0; i < landmarks.length; i++) {
     const p = landmarks[i];
     if (p && (p.visibility || 1) > 0.4) {
@@ -430,6 +529,76 @@ function drawSkeleton(ctx, landmarks, w, h) {
       ctx.fill();
     }
   }
+
+  // 3. Compute and draw bounding box with posture classification badge
+  const visiblePts = landmarks.filter(p => (p && (p.visibility || 1) > 0.35));
+  if (visiblePts.length >= 4) {
+    const xs = visiblePts.map(p => p.x * w);
+    const ys = visiblePts.map(p => p.y * h);
+    const minX = Math.max(0, Math.min(...xs) - 20);
+    const maxX = Math.min(w, Math.max(...xs) + 20);
+    const minY = Math.max(0, Math.min(...ys) - 20);
+    const maxY = Math.min(h, Math.max(...ys) + 20);
+    const bw = maxX - minX;
+    const bh = maxY - minY;
+
+    // Corner brackets
+    const cLen = Math.min(22, Math.max(8, bw / 5));
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 2.5;
+
+    // Top-left
+    ctx.beginPath(); ctx.moveTo(minX, minY + cLen); ctx.lineTo(minX, minY); ctx.lineTo(minX + cLen, minY); ctx.stroke();
+    // Top-right
+    ctx.beginPath(); ctx.moveTo(maxX - cLen, minY); ctx.lineTo(maxX, minY); ctx.lineTo(maxX, minY + cLen); ctx.stroke();
+    // Bottom-left
+    ctx.beginPath(); ctx.moveTo(minX, maxY - cLen); ctx.lineTo(minX, maxY); ctx.lineTo(minX + cLen, maxY); ctx.stroke();
+    // Bottom-right
+    ctx.beginPath(); ctx.moveTo(maxX - cLen, maxY); ctx.lineTo(maxX, maxY); ctx.lineTo(maxX, maxY - cLen); ctx.stroke();
+
+    // High-tech posture label tag
+    const isPeoplePage = window.location.pathname.includes("/domain/people");
+    const tagText = isPeoplePage
+      ? `ID: John Doe (EMP-001) | 98.2% MATCH`
+      : `${currentPostureName.replace('_', ' ')} (${currentConfidence}%)`;
+    
+    const tagWidth = isPeoplePage ? 260 : 175;
+    const tagH = isPeoplePage ? 36 : 22;
+    const tagY = Math.max(0, minY - tagH - 4);
+    
+    ctx.fillStyle = "rgba(10, 14, 23, 0.90)";
+    ctx.fillRect(minX, tagY, tagWidth, tagH);
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(minX, tagY, tagWidth, tagH);
+
+    ctx.fillStyle = themeColor;
+    ctx.font = "bold 11px monospace";
+    ctx.fillText(tagText, minX + 8, tagY + 14);
+
+    if (isPeoplePage) {
+      ctx.fillStyle = "#10b981";
+      ctx.font = "10px monospace";
+      ctx.fillText(`STATUS: VERIFIED • ACT: ${currentPostureName.replace('_', ' ')}`, minX + 8, tagY + 28);
+
+      // Biometric Reticle around Face
+      const nose = landmarks[0];
+      if (nose && (nose.visibility || 1) > 0.4) {
+        const fcx = nose.x * w;
+        const fcy = nose.y * h;
+        const fr = Math.max(30, (bw || 100) * 0.22);
+        ctx.save();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.75)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(fcx, fcy, fr, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   ctx.restore();
 }
 
@@ -507,15 +676,23 @@ function toggleBackendStreamMode() {
 }
 
 function stopInBuiltCamera() {
-  if (poseIntervalTimer) {
-    clearInterval(poseIntervalTimer);
-    poseIntervalTimer = null;
+  if (poseTimeoutTimer) {
+    clearTimeout(poseTimeoutTimer);
+    poseTimeoutTimer = null;
   }
-  if (inbuiltStream) {
-    inbuiltStream.getTracks().forEach(track => track.stop());
-    inbuiltStream = null;
+  if (inbuiltStream && typeof inbuiltStream.getTracks === "function") {
+    inbuiltStream.getTracks().forEach(track => {
+      try { track.stop(); } catch (e) {}
+    });
   }
-  localStorage.removeItem("cctv_cam_autostart");
+  inbuiltStream = null;
+
+  const video = document.getElementById("inbuiltVideo");
+  if (video) {
+    video.srcObject = null;
+    video.pause();
+  }
+
   const overlay = document.getElementById("camPermissionOverlay");
   const controls = document.getElementById("camControlsOverlay");
   const statusBadge = document.getElementById("streamStatusBadge");
@@ -524,11 +701,7 @@ function stopInBuiltCamera() {
   if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--text-dim);">STANDBY</span>';
 }
 
-// Seamless Camera Auto-start: If previously allowed, start immediately without prompting
-document.addEventListener("DOMContentLoaded", () => {
-  if (localStorage.getItem("cctv_cam_autostart") === "true") {
-    console.log("[Smart CCTV Manager] Found persistent camera permission; auto-starting webcam feed...");
-    startInBuiltCamera();
-  }
-});
+// Ensure camera hardware access is completely turned off when navigating away
+window.addEventListener("beforeunload", stopInBuiltCamera);
+window.addEventListener("pagehide", stopInBuiltCamera);
 

@@ -104,3 +104,4 @@ function simulateVehicleCapture() {
 document.addEventListener("DOMContentLoaded", () => {
   loadTrafficClip();
 });
+

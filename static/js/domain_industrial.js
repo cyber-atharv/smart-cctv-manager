@@ -179,6 +179,17 @@ function updateIndustrialUI() {
   }
 }
 
+function stopIndustrialCam() {
+  if (indStream && typeof indStream.getTracks === "function") {
+    indStream.getTracks().forEach(t => { try { t.stop(); } catch(e){} });
+    indStream = null;
+  }
+}
+window.addEventListener("beforeunload", stopIndustrialCam);
+window.addEventListener("pagehide", stopIndustrialCam);
+
 document.addEventListener("DOMContentLoaded", () => {
-  startIndustrialCam();
+  // Wait for user interaction or load factory clip
+  loadIndustrialClip();
 });
+

@@ -203,6 +203,17 @@ function updateExplainableScoreUI() {
   }
 }
 
+function stopSecurityCam() {
+  if (secStream && typeof secStream.getTracks === "function") {
+    secStream.getTracks().forEach(t => { try { t.stop(); } catch(e){} });
+    secStream = null;
+  }
+}
+window.addEventListener("beforeunload", stopSecurityCam);
+window.addEventListener("pagehide", stopSecurityCam);
+
 document.addEventListener("DOMContentLoaded", () => {
-  startSecurityCam();
+  // Wait for user interaction or load clip by default
+  loadSecurityClip();
 });
+

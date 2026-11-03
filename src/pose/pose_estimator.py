@@ -129,71 +129,54 @@ class PoseEstimator:
                                     }
 
                         if len(landmarks_dict) >= 5:
-                            return {
-                                "landmarks": landmarks_dict,
-                                "keypoints_found": len(landmarks_dict),
-                                "backend": self.backend_name,
-                                "success": True
-                            }
+                            # Require at least one shoulder to be visible to reject non-human textures
+                            has_shoulder = (
+                                landmarks_dict.get("left_shoulder", {}).get("visibility", 0) > 0.35 or
+                                landmarks_dict.get("right_shoulder", {}).get("visibility", 0) > 0.35
+                            )
+                            if has_shoulder:
+                                return {
+                                    "landmarks": landmarks_dict,
+                                    "keypoints_found": len(landmarks_dict),
+                                    "backend": self.backend_name,
+                                    "success": True
+                                }
             except Exception as e:
                 logger.debug(f"YOLO-Pose frame inference warning: {e}")
 
-        # 2. Geometric Approximation Fallback
-        if bbox is not None:
-            return self._approximate_from_bbox(bbox, w, h)
+        # 2. MediaPipe Pose Execution (Fallback when YOLO-Pose is offline)
+        if self.mp_pose is not None:
+            try:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_res = self.mp_pose.process(rgb_frame)
+                if mp_res and mp_res.pose_landmarks:
+                    lms = mp_res.pose_landmarks.landmark
+                    # Verify shoulders exist
+                    if len(lms) >= 33 and (lms[11].visibility > 0.35 or lms[12].visibility > 0.35):
+                        landmarks_dict = {
+                            "nose": {"x": lms[0].x, "y": lms[0].y, "z": lms[0].z, "visibility": lms[0].visibility},
+                            "left_shoulder": {"x": lms[11].x, "y": lms[11].y, "z": lms[11].z, "visibility": lms[11].visibility},
+                            "right_shoulder": {"x": lms[12].x, "y": lms[12].y, "z": lms[12].z, "visibility": lms[12].visibility},
+                            "left_elbow": {"x": lms[13].x, "y": lms[13].y, "z": lms[13].z, "visibility": lms[13].visibility},
+                            "right_elbow": {"x": lms[14].x, "y": lms[14].y, "z": lms[14].z, "visibility": lms[14].visibility},
+                            "left_wrist": {"x": lms[15].x, "y": lms[15].y, "z": lms[15].z, "visibility": lms[15].visibility},
+                            "right_wrist": {"x": lms[16].x, "y": lms[16].y, "z": lms[16].z, "visibility": lms[16].visibility},
+                            "left_hip": {"x": lms[23].x, "y": lms[23].y, "z": lms[23].z, "visibility": lms[23].visibility},
+                            "right_hip": {"x": lms[24].x, "y": lms[24].y, "z": lms[24].z, "visibility": lms[24].visibility},
+                            "left_knee": {"x": lms[25].x, "y": lms[25].y, "z": lms[25].z, "visibility": lms[25].visibility},
+                            "right_knee": {"x": lms[26].x, "y": lms[26].y, "z": lms[26].z, "visibility": lms[26].visibility},
+                            "left_ankle": {"x": lms[27].x, "y": lms[27].y, "z": lms[27].z, "visibility": lms[27].visibility},
+                            "right_ankle": {"x": lms[28].x, "y": lms[28].y, "z": lms[28].z, "visibility": lms[28].visibility},
+                        }
+                        return {
+                            "landmarks": landmarks_dict,
+                            "keypoints_found": len(landmarks_dict),
+                            "backend": "MediaPipe Pose",
+                            "success": True
+                        }
+            except Exception as e:
+                logger.debug(f"MediaPipe inference warning: {e}")
 
+        # 3. Strictly return None when no real biological human anatomy is present
+        # Prevents ghost / phantom skeleton hallucination on blinds, walls, and inanimate objects
         return None
-
-    def _approximate_from_bbox(self, bbox: List[int], w: int, h: int) -> Dict[str, Any]:
-        """Approximates anatomical joint positions from person bounding box geometry."""
-        x1, y1, x2, y2 = bbox
-        nx1, ny1 = x1 / float(w), y1 / float(h)
-        nx2, ny2 = x2 / float(w), y2 / float(h)
-        cx = (nx1 + nx2) / 2.0
-        cy = (ny1 + ny2) / 2.0
-        bw = nx2 - nx1
-        bh = ny2 - ny1
-
-        # Check if posture is horizontal / fallen (aspect ratio width > 1.15 * height)
-        if bw > 1.15 * bh:
-            # Horizontal orientation (fallen / lying down on floor)
-            landmarks_dict = {
-                "nose": {"x": nx1 + 0.12 * bw, "y": cy, "z": 0.0, "visibility": 0.8},
-                "left_shoulder": {"x": nx1 + 0.28 * bw, "y": cy - 0.20 * bh, "z": 0.0, "visibility": 0.8},
-                "right_shoulder": {"x": nx1 + 0.28 * bw, "y": cy + 0.20 * bh, "z": 0.0, "visibility": 0.8},
-                "left_elbow": {"x": nx1 + 0.40 * bw, "y": cy - 0.35 * bh, "z": 0.0, "visibility": 0.7},
-                "right_elbow": {"x": nx1 + 0.40 * bw, "y": cy + 0.35 * bh, "z": 0.0, "visibility": 0.7},
-                "left_wrist": {"x": nx1 + 0.50 * bw, "y": cy - 0.40 * bh, "z": 0.0, "visibility": 0.6},
-                "right_wrist": {"x": nx1 + 0.50 * bw, "y": cy + 0.40 * bh, "z": 0.0, "visibility": 0.6},
-                "left_hip": {"x": cx + 0.08 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
-                "right_hip": {"x": cx + 0.08 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
-                "left_knee": {"x": nx1 + 0.75 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
-                "right_knee": {"x": nx1 + 0.75 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
-                "left_ankle": {"x": nx2 - 0.04 * bw, "y": cy - 0.15 * bh, "z": 0.0, "visibility": 0.8},
-                "right_ankle": {"x": nx2 - 0.04 * bw, "y": cy + 0.15 * bh, "z": 0.0, "visibility": 0.8},
-            }
-        else:
-            # Vertical orientation (standing / walking / sitting)
-            landmarks_dict = {
-                "nose": {"x": cx, "y": ny1 + 0.1 * bh, "z": 0.0, "visibility": 0.6},
-                "left_shoulder": {"x": cx - 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
-                "right_shoulder": {"x": cx + 0.25 * bw, "y": ny1 + 0.22 * bh, "z": 0.0, "visibility": 0.6},
-                "left_elbow": {"x": cx - 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
-                "right_elbow": {"x": cx + 0.35 * bw, "y": ny1 + 0.40 * bh, "z": 0.0, "visibility": 0.5},
-                "left_wrist": {"x": cx - 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
-                "right_wrist": {"x": cx + 0.40 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.5},
-                "left_hip": {"x": cx - 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
-                "right_hip": {"x": cx + 0.20 * bw, "y": ny1 + 0.55 * bh, "z": 0.0, "visibility": 0.6},
-                "left_knee": {"x": cx - 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
-                "right_knee": {"x": cx + 0.20 * bw, "y": ny1 + 0.78 * bh, "z": 0.0, "visibility": 0.6},
-                "left_ankle": {"x": cx - 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
-                "right_ankle": {"x": cx + 0.20 * bw, "y": ny2 - 0.02 * bh, "z": 0.0, "visibility": 0.6},
-            }
-
-        return {
-            "landmarks": landmarks_dict,
-            "keypoints_found": len(landmarks_dict),
-            "backend": "Geometric Fallback",
-            "success": True,
-            "is_approximated": True
-        }

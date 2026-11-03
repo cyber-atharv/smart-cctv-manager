@@ -28,11 +28,53 @@
   <div class="card" style="padding: 18px;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
       <div style="font-size: 14px; font-weight: 700;">Access Gate Camera (CAM-01 / Entrance)</div>
-      <span class="badge badge-live"><span class="pulsing-dot-green"></span> BIOMETRIC SCANNER READY</span>
+      <span class="badge badge-live" id="streamStatusBadge"><span class="pulsing-dot-green"></span> BIOMETRIC SCANNER READY</span>
     </div>
 
-    <div style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
-      <img src="/api/cameras/CAM-01/stream?mode=ai" style="width: 100%; height: 100%; object-fit: cover;" alt="Access Stream">
+    <div class="hero-camera-viewport" id="heroViewport" style="height: 420px; position: relative; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
+      <video id="inbuiltVideo" class="hero-video-elem" autoplay playsinline muted></video>
+      <canvas id="inbuiltCanvas" class="hero-canvas-elem"></canvas>
+      <img id="backendStreamImg" src="/api/cameras/CAM-01/stream?mode=ai" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Backend Stream">
+
+      <!-- Permission Request Overlay (Strict per-page activation) -->
+      <div class="permission-overlay" id="camPermissionOverlay">
+        <div class="permission-icon-glow">📹</div>
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">Live Biometric Telemetry Standby</h3>
+        <p style="font-size: 13px; color: var(--text-muted); max-width: 440px; margin-bottom: 18px; line-height: 1.5;">
+          Connect your in-built camera or phone stream for smooth <strong>30–60 FPS zero-latency</strong> live biometric face recognition and posture tracking.
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" style="padding: 10px 22px; font-size: 13px; font-weight: 700;" onclick="startInBuiltCamera()">
+            ⚡ Allow & Start In-Built Camera
+          </button>
+          <button class="btn btn-secondary" style="padding: 10px 22px; font-size: 13px; font-weight: 700;" onclick="promptConnectDroidCam()">
+            📱 Connect Phone (DroidCam HD)
+          </button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+          Strict per-page lifecycle: camera hardware turns off automatically when navigating away.
+        </div>
+      </div>
+
+      <!-- Live Floating Controls Overlay -->
+      <div class="camera-controls-overlay" id="camControlsOverlay" style="display: none; flex-wrap: wrap; gap: 6px;">
+        <button class="ctrl-btn" onclick="toggleLocalAI()" id="btnToggleLocalAI">⚡ Pause AI</button>
+        <button class="ctrl-btn" onclick="toggleSkeletonView()" id="btnToggleSkeleton">🦴 Skeleton: ON</button>
+        <button class="ctrl-btn" onclick="cycleRotation()" id="btnRotate" title="Fix sideways mobile DroidCam feed">
+          🔄 Rotate: <span id="rotDegreeLabel">0°</span>
+        </button>
+        <button class="ctrl-btn" onclick="toggleMirror()" id="btnMirror" title="Flip camera mirror horizontally">
+          🪞 Mirror: OFF
+        </button>
+        <button class="ctrl-btn" onclick="toggleFramingMode()" id="btnFraming" title="Toggle Close-Up vs Full Body">
+          📐 Close-Up
+        </button>
+        <button class="ctrl-btn" onclick="promptConnectDroidCam()" id="btnDroidCam" title="Switch to Mobile DroidCam stream">
+          📱 DroidCam
+        </button>
+        <button class="ctrl-btn" onclick="captureIncidentSnapshotManual()">📷 Snapshot</button>
+        <button class="ctrl-btn" onclick="toggleBackendStreamMode()" id="btnStreamMode">🔄 Direct View</button>
+      </div>
     </div>
 
     <!-- Quick Stats Below Viewport -->
@@ -117,3 +159,8 @@
   </div>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script src="/static/js/inbuilt_camera.js"></script>
+{% endblock %}
+

@@ -41,7 +41,7 @@ class VisionPipelineWorker:
         self.video_buffer = RollingVideoBuffer(fps=fps, max_seconds=20)
         
         # Modular computer vision components
-        self.detector = PersonDetector(conf_threshold=0.28)
+        self.detector = PersonDetector(conf_threshold=0.45)
         self.tracker = MultiObjectTracker(camera_id=camera_id, iou_threshold=0.3, max_age=30)
         self.pose_estimator = PoseEstimator(min_detection_confidence=0.4, min_tracking_confidence=0.4)
         self.feature_extractor = FeatureExtractor()

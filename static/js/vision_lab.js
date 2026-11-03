@@ -113,9 +113,6 @@ async function startLabCamera() {
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
 
-    // Persist camera state across pages
-    localStorage.setItem("cctv_cam_autostart", "true");
-
     if (overlay) overlay.style.display = "none";
     if (controls) controls.style.display = "flex";
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LAB FEED LIVE';
@@ -127,6 +124,25 @@ async function startLabCamera() {
     if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ ACCESS DENIED</span>';
   }
 }
+
+function stopLabCamera() {
+  if (labStream) {
+    labStream.getTracks().forEach(track => {
+      try { track.stop(); } catch (e) {}
+    });
+    labStream = null;
+  }
+  const overlay = document.getElementById("labPermissionOverlay");
+  const controls = document.getElementById("labControlsOverlay");
+  const statusBadge = document.getElementById("labStatusBadge");
+  if (overlay) overlay.style.display = "flex";
+  if (controls) controls.style.display = "none";
+  if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--text-dim);">STANDBY</span>';
+}
+
+// Clean camera release when navigating away
+window.addEventListener("beforeunload", stopLabCamera);
+window.addEventListener("pagehide", stopLabCamera);
 
 // ==================== REAL-TIME ANALYTICAL RENDER LOOP ====================
 let frameIndex = 0;
@@ -536,11 +552,5 @@ function captureLabSnapshot() {
   link.click();
 }
 
-// ==================== AUTOSTART HOOK ====================
-document.addEventListener("DOMContentLoaded", () => {
-  if (localStorage.getItem("cctv_cam_autostart") === "true") {
-    console.log("[Smart CCTV Manager — Vision Lab] Persistent camera permission detected; auto-starting...");
-    startLabCamera();
-  }
-});
+// Clean per-page activation: requires explicit user permission per session
 
