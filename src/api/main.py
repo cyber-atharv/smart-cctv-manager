@@ -507,6 +507,50 @@ def stream_camera(camera_id: str, mode: str = Query("ai", pattern="^(ai|raw)$"))
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+@app.get("/api/proxy/droidcam")
+async def proxy_droidcam_stream(url: str = Query(..., description="Target DroidCam / IP Webcam stream URL")):
+    """
+    Proxies live DroidCam / IP Webcam MJPEG streams with full CORS headers.
+    Completely eliminates the HTML5 <video> green screen bug and canvas CORS tainting!
+    """
+    import httpx
+    target_url = url.strip()
+    if not target_url.startswith("http://") and not target_url.startswith("https://"):
+        target_url = f"http://{target_url}"
+
+    # Auto-complete endpoint if user entered just http://192.168.1.xxx:4747
+    parsed = target_url.rstrip("/")
+    if parsed.count("/") == 2:  # e.g. http://192.168.1.105:4747
+        target_url = parsed + "/video"
+
+    try:
+        client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0))
+        req = client.build_request("GET", target_url)
+        resp = await client.send(req, stream=True)
+
+        async def stream_generator():
+            try:
+                async for chunk in resp.aiter_raw():
+                    yield chunk
+            except Exception:
+                pass
+            finally:
+                await resp.aclose()
+                await client.aclose()
+
+        content_type = resp.headers.get("content-type", "multipart/x-mixed-replace; boundary=--frame")
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+        }
+        return StreamingResponse(stream_generator(), media_type=content_type, headers=headers)
+    except Exception as e:
+        logger.error(f"DroidCam proxy error for {target_url}: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not connect to DroidCam stream at {target_url}. Ensure phone is running DroidCam and on the same Wi-Fi network.")
+
 @app.get("/api/cameras/{camera_id}/status")
 def get_camera_status(camera_id: str):
     worker = pipeline_workers.get(camera_id)

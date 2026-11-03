@@ -641,6 +641,7 @@ function stopAllActiveMediaTracks() {
     window.secStream,
     window.indStream,
     window.visionLabStream,
+    window.labStream,
     window.peopleStream,
     window.activeCameraStream
   ];
@@ -660,8 +661,19 @@ function stopAllActiveMediaTracks() {
   window.secStream = null;
   window.indStream = null;
   window.visionLabStream = null;
+  window.labStream = null;
   window.peopleStream = null;
   window.activeCameraStream = null;
+
+  // Clear DroidCam proxy image elements
+  if (window.droidcamImgElement) {
+    try { window.droidcamImgElement.src = ""; } catch(e) {}
+    window.droidcamImgElement = null;
+  }
+  if (window.labDroidcamImg) {
+    try { window.labDroidcamImg.src = ""; } catch(e) {}
+    window.labDroidcamImg = null;
+  }
 
   // 2. Pause and detach all HTML video stream elements
   document.querySelectorAll("video").forEach(v => {

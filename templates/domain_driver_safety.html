@@ -50,23 +50,53 @@
     </div>
 
     <div style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
-      <video id="labVideo" autoplay playsinline muted style="display: none;"></video>
+      <video id="labVideo" autoplay playsinline muted style="position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;"></video>
       <canvas id="labCanvas" width="800" height="450" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
 
       <div class="permission-overlay" id="labPermissionOverlay">
         <div class="permission-icon-glow">👁️</div>
         <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">Connect Driver Dash Camera</h3>
         <p style="font-size: 13px; color: var(--text-muted); max-width: 440px; margin-bottom: 18px; line-height: 1.5;">
-          Allow camera access to test real-time driver fatigue monitoring, Eye Aspect Ratio (EAR), and emergency acoustic wake-up siren.
+          Connect your webcam or mobile phone to test real-time driver fatigue monitoring, Eye Aspect Ratio (EAR), and emergency acoustic wake-up siren.
         </p>
-        <button class="btn btn-primary" onclick="startLabCamera()">
-          ⚡ Connect Driver Camera
-        </button>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" style="padding: 10px 20px; font-size: 13px; font-weight: 700;" onclick="startLabCamera()">
+            ⚡ Connect Driver Camera (Webcam)
+          </button>
+          <button class="btn btn-secondary" style="padding: 10px 20px; font-size: 13px; font-weight: 700;" onclick="promptLabDroidCam()">
+            📱 Connect Phone (DroidCam HD)
+          </button>
+          <button class="btn btn-outline" style="padding: 10px 20px; font-size: 13px; font-weight: 700;" onclick="loadDriverDemoClip()">
+            🎬 Load Demo Driver Feed
+          </button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+          Strict per-page lifecycle: camera hardware turns off automatically when navigating away.
+        </div>
       </div>
 
-      <div class="camera-controls-overlay" id="labControlsOverlay" style="display: none;">
-        <button class="ctrl-btn" onclick="testAlarmSiren()">🔊 Test Siren</button>
-        <button class="ctrl-btn" onclick="simulateDrowsyEvent()">⚡ Trigger Alarm</button>
+      <div class="camera-controls-overlay" id="labControlsOverlay" style="display: none; flex-wrap: wrap; gap: 6px;">
+        <button class="ctrl-btn" onclick="cycleLabRotation()" id="btnLabRotate" title="Fix sideways mobile feed">
+          🔄 Rotate: <span id="labRotLabel">0°</span>
+        </button>
+        <button class="ctrl-btn" onclick="toggleLabMirror()" id="btnLabMirror" title="Flip camera mirror horizontally">
+          🪞 Mirror: ON
+        </button>
+        <button class="ctrl-btn" onclick="promptLabDroidCam()" title="Connect phone camera">
+          📱 DroidCam
+        </button>
+        <button class="ctrl-btn" onclick="loadDriverDemoClip()" title="Load demo driver feed">
+          🎬 Demo Feed
+        </button>
+        <button class="ctrl-btn" onclick="testAlarmSiren()">
+          🔊 Test Siren
+        </button>
+        <button class="ctrl-btn" onclick="simulateDrowsyEvent()">
+          ⚡ Trigger Alarm
+        </button>
+        <button class="ctrl-btn" onclick="stopLabCamera()">
+          ⏹️ Stop Camera
+        </button>
       </div>
     </div>
   </div>

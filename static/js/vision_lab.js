@@ -88,6 +88,21 @@ function updateDrowsyThreshold(val) {
 }
 
 // ==================== CAMERA LIFECYCLE & AUTOSTART ====================
+let labRotation = 0; // 0, 90, 180, 270
+let isLabMirrored = true;
+
+function cycleLabRotation() {
+  labRotation = (labRotation + 90) % 360;
+  const label = document.getElementById("labRotLabel");
+  if (label) label.textContent = `${labRotation}°`;
+}
+
+function toggleLabMirror() {
+  isLabMirrored = !isLabMirrored;
+  const btn = document.getElementById("btnLabMirror");
+  if (btn) btn.textContent = isLabMirrored ? "🪞 Mirror: ON" : "🪞 Mirror: OFF";
+}
+
 async function startLabCamera() {
   const overlay = document.getElementById("labPermissionOverlay");
   const video = document.getElementById("labVideo");
@@ -96,16 +111,30 @@ async function startLabCamera() {
   const statusBadge = document.getElementById("labStatusBadge");
 
   try {
-    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> CONNECTING...';
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> CONNECTING DRIVER CAM...';
 
-    labStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: "user"
-      },
-      audio: false
-    });
+    // Stop any existing tracks
+    stopLabCamera();
+
+    // Progressive getUserMedia constraint fallback (fixes OverconstrainedError on Windows/USB webcams)
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+    } catch (e1) {
+      console.warn("High-res constraint failed, trying basic video constraint:", e1);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    }
+
+    labStream = stream;
+    window.labStream = stream;
+    window.visionLabStream = stream;
+    window.labDroidcamImg = null;
 
     video.srcObject = labStream;
     await video.play();
@@ -115,23 +144,165 @@ async function startLabCamera() {
 
     if (overlay) overlay.style.display = "none";
     if (controls) controls.style.display = "flex";
-    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> LAB FEED LIVE';
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DRIVER CAM LIVE (60 FPS)';
 
     requestAnimationFrame(labRenderLoop);
 
   } catch (err) {
-    console.error("Vision Lab Camera error:", err);
-    if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ ACCESS DENIED</span>';
+    console.error("Driver Camera access error:", err);
+    if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ ACCESS DENIED / BUSY</span>';
+    const tryDemo = confirm(
+      "Could not open hardware webcam.\n\nPossible reasons:\n1. Another app or browser tab is using the camera.\n2. Windows camera permissions need to be allowed.\n\nWould you like to load the Driver Demo Feed to test EAR eye tracking and siren?"
+    );
+    if (tryDemo) {
+      loadDriverDemoClip();
+    }
   }
 }
 
+async function promptLabDroidCam() {
+  const overlay = document.getElementById("labPermissionOverlay");
+  const controls = document.getElementById("labControlsOverlay");
+  const statusBadge = document.getElementById("labStatusBadge");
+  const canvas = document.getElementById("labCanvas");
+  const video = document.getElementById("labVideo");
+
+  // 1. Check for DroidCam Virtual Camera device in Windows
+  let droidcamDev = null;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    droidcamDev = devices.find(d => d.kind === "videoinput" && d.label.toLowerCase().includes("droidcam"));
+  } catch (e) {}
+
+  if (droidcamDev) {
+    const useDirect = confirm(`Detected Windows DroidCam Client ("${droidcamDev.label}")!\n\nClick OK to connect directly via DirectShow Driver.\nClick Cancel to connect via Wi-Fi IP.`);
+    if (useDirect) {
+      try {
+        stopLabCamera();
+        labStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: droidcamDev.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        window.labStream = labStream;
+        window.visionLabStream = labStream;
+        window.labDroidcamImg = null;
+
+        video.srcObject = labStream;
+        await video.play();
+
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        if (overlay) overlay.style.display = "none";
+        if (controls) controls.style.display = "flex";
+        if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD (DIRECTSHOW)';
+
+        requestAnimationFrame(labRenderLoop);
+        return;
+      } catch (err) {
+        console.warn("DirectShow connect error, falling back to IP:", err);
+      }
+    }
+  }
+
+  // 2. Wi-Fi IP Stream connection via CORS Proxy (Fixes HTML5 <video> green screen bug!)
+  const currentIp = localStorage.getItem("cctv_droidcam_ip") || "http://192.168.1.100:4747/video";
+  const rawUrl = prompt("Enter DroidCam Wi-Fi IP Stream URL\n(As displayed on your phone screen, e.g. http://192.168.1.105:4747):", currentIp);
+  if (!rawUrl) return;
+
+  let streamUrl = rawUrl.trim();
+  if (!streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
+    streamUrl = "http://" + streamUrl;
+  }
+  if (!streamUrl.endsWith("/video") && !streamUrl.endsWith("/mjpegfeed")) {
+    streamUrl = streamUrl.replace(/\/+$/, "") + "/video";
+  }
+  localStorage.setItem("cctv_droidcam_ip", streamUrl);
+
+  stopLabCamera();
+
+  if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> CONNECTING DROIDCAM...';
+
+  // Load via CORS Proxy to eliminate green screen!
+  const proxyUrl = `/api/proxy/droidcam?url=${encodeURIComponent(streamUrl)}`;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+
+  img.onload = () => {
+    canvas.width = img.naturalWidth || 1280;
+    canvas.height = img.naturalHeight || 720;
+    labStream = "droidcam";
+    window.labStream = "droidcam";
+    window.visionLabStream = "droidcam";
+    window.labDroidcamImg = img;
+
+    if (overlay) overlay.style.display = "none";
+    if (controls) controls.style.display = "flex";
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD LIVE';
+
+    requestAnimationFrame(labRenderLoop);
+  };
+
+  img.onerror = () => {
+    alert(`Could not connect to DroidCam stream at:\n${streamUrl}\n\nPlease check:\n1. DroidCam is open and running on your phone.\n2. Your PC and phone are connected to the SAME Wi-Fi network.\n3. The IP address matches the "WiFi IP" displayed on your phone.`);
+    if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ DROIDCAM OFFLINE</span>';
+  };
+
+  img.src = proxyUrl;
+}
+
+function loadDriverDemoClip() {
+  const overlay = document.getElementById("labPermissionOverlay");
+  const video = document.getElementById("labVideo");
+  const canvas = document.getElementById("labCanvas");
+  const controls = document.getElementById("labControlsOverlay");
+  const statusBadge = document.getElementById("labStatusBadge");
+
+  stopLabCamera();
+
+  video.srcObject = null;
+  video.src = "/static/videos/cv_demo_01.mp4";
+  video.loop = true;
+
+  video.play().then(() => {
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    labStream = "democlip";
+    window.labStream = "democlip";
+    window.visionLabStream = "democlip";
+    window.labDroidcamImg = null;
+
+    if (overlay) overlay.style.display = "none";
+    if (controls) controls.style.display = "flex";
+    if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DEMO FEED RUNNING';
+
+    requestAnimationFrame(labRenderLoop);
+  }).catch(err => {
+    console.error("Demo clip load error:", err);
+  });
+}
+
 function stopLabCamera() {
-  if (labStream) {
+  if (labStream && typeof labStream.getTracks === "function") {
     labStream.getTracks().forEach(track => {
       try { track.stop(); } catch (e) {}
     });
-    labStream = null;
   }
+  labStream = null;
+  window.labStream = null;
+  window.visionLabStream = null;
+
+  if (window.labDroidcamImg) {
+    try { window.labDroidcamImg.src = ""; } catch (e) {}
+    window.labDroidcamImg = null;
+  }
+
+  const video = document.getElementById("labVideo");
+  if (video) {
+    video.srcObject = null;
+    video.pause();
+  }
+
   const overlay = document.getElementById("labPermissionOverlay");
   const controls = document.getElementById("labControlsOverlay");
   const statusBadge = document.getElementById("labStatusBadge");
@@ -153,17 +324,35 @@ function labRenderLoop() {
 
   const video = document.getElementById("labVideo");
   const canvas = document.getElementById("labCanvas");
-  if (!video || !canvas) return;
+  if (!canvas) return;
 
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
 
-  // Mirror effect for natural driver/user webcam interaction
+  // Determine active frame source (DroidCam Image vs Video element)
+  const isDroidCam = (labStream === "droidcam" && window.labDroidcamImg);
+  const sourceElem = isDroidCam ? window.labDroidcamImg : video;
+
+  if (!isDroidCam && (!video || video.readyState < 2)) {
+    requestAnimationFrame(labRenderLoop);
+    return;
+  }
+
+  // Draw transformed frame onto canvas with rotation and mirror
   ctx.save();
-  ctx.translate(w, 0);
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, 0, 0, w, h);
+  ctx.clearRect(0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((labRotation * Math.PI) / 180);
+  if (isLabMirrored) ctx.scale(-1, 1);
+
+  const swap = (labRotation % 180 !== 0);
+  const dw = swap ? h : w;
+  const dh = swap ? w : h;
+
+  try {
+    ctx.drawImage(sourceElem, -dw / 2, -dh / 2, dw, dh);
+  } catch (e) {}
   ctx.restore();
 
   frameIndex++;

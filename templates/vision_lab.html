@@ -75,15 +75,35 @@
         <div class="permission-icon-glow">🔬</div>
         <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">Connect Camera to AI Vision Lab</h3>
         <p style="font-size: 13px; color: var(--text-muted); max-width: 440px; margin-bottom: 18px; line-height: 1.5;">
-          Allow camera access to test real-time <strong>Driver Drowsiness Eye-Closure (EAR)</strong>, Head-Pose Gaze, and Edge ML models in your browser.
+          Allow camera access or connect your phone to test real-time <strong>Driver Drowsiness Eye-Closure (EAR)</strong>, Head-Pose Gaze, and Edge ML models.
         </p>
-        <button class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700;" onclick="startLabCamera()">
-          ⚡ Connect Camera Now
-        </button>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" style="padding: 10px 22px; font-size: 13px; font-weight: 700;" onclick="startLabCamera()">
+            ⚡ Connect Camera (Webcam)
+          </button>
+          <button class="btn btn-secondary" style="padding: 10px 22px; font-size: 13px; font-weight: 700;" onclick="promptLabDroidCam()">
+            📱 Connect Phone (DroidCam HD)
+          </button>
+          <button class="btn btn-outline" style="padding: 10px 22px; font-size: 13px; font-weight: 700;" onclick="loadDriverDemoClip()">
+            🎬 Load Demo Feed
+          </button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+          Strict per-page lifecycle: camera hardware turns off automatically when navigating away.
+        </div>
       </div>
 
       <!-- Live Floating Controls -->
-      <div class="camera-controls-overlay" id="labControlsOverlay" style="display: none;">
+      <div class="camera-controls-overlay" id="labControlsOverlay" style="display: none; flex-wrap: wrap; gap: 6px;">
+        <button class="ctrl-btn" onclick="cycleLabRotation()" id="btnLabRotate" title="Fix sideways mobile feed">
+          🔄 Rotate: <span id="labRotLabel">0°</span>
+        </button>
+        <button class="ctrl-btn" onclick="toggleLabMirror()" id="btnLabMirror" title="Flip camera mirror horizontally">
+          🪞 Mirror: ON
+        </button>
+        <button class="ctrl-btn" onclick="promptLabDroidCam()" title="Connect phone camera">
+          📱 DroidCam
+        </button>
         <button class="ctrl-btn" onclick="toggleLabMesh()" id="btnToggleMesh">
           🕸️ Mesh: ON
         </button>
@@ -92,6 +112,9 @@
         </button>
         <button class="ctrl-btn" onclick="captureLabSnapshot()">
           📷 Snapshot
+        </button>
+        <button class="ctrl-btn" onclick="stopLabCamera()">
+          ⏹️ Stop Camera
         </button>
       </div>
     </div>
