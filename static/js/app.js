@@ -674,6 +674,12 @@ function stopAllActiveMediaTracks() {
     try { window.labDroidcamImg.src = ""; } catch(e) {}
     window.labDroidcamImg = null;
   }
+  document.querySelectorAll("#inbuiltDroidCamImg, #labDroidCamImg").forEach(img => {
+    try {
+      img.src = "";
+      img.style.display = "none";
+    } catch (e) {}
+  });
 
   // 2. Pause and detach all HTML video stream elements
   document.querySelectorAll("video").forEach(v => {

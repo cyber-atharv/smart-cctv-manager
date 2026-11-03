@@ -49,9 +49,10 @@
       <span class="badge badge-live" id="labStatusBadge"><span class="pulsing-dot-green"></span> OCULAR SCANNER ACTIVE</span>
     </div>
 
-    <div style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
-      <video id="labVideo" autoplay playsinline muted style="position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;"></video>
-      <canvas id="labCanvas" width="800" height="450" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
+    <div class="hero-camera-viewport" id="labViewport" style="position: relative; width: 100%; height: 420px; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
+      <video id="labVideo" class="hero-video-elem" autoplay playsinline muted></video>
+      <img id="labDroidCamImg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; z-index: 1; display: none;" crossOrigin="anonymous" alt="DroidCam Stream">
+      <canvas id="labCanvas" class="hero-canvas-elem" width="1280" height="720"></canvas>
 
       <div class="permission-overlay" id="labPermissionOverlay">
         <div class="permission-icon-glow">👁️</div>

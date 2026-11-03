@@ -33,6 +33,7 @@
 
     <div class="hero-camera-viewport" id="heroViewport" style="height: 420px; position: relative; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-color);">
       <video id="inbuiltVideo" class="hero-video-elem" autoplay playsinline muted></video>
+      <img id="inbuiltDroidCamImg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; z-index: 1; display: none;" crossOrigin="anonymous" alt="DroidCam Stream">
       <canvas id="inbuiltCanvas" class="hero-canvas-elem"></canvas>
       <img id="backendStreamImg" src="/api/cameras/CAM-01/stream?mode=ai" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Backend Stream">
 

@@ -103,24 +103,121 @@ function toggleLabMirror() {
   if (btn) btn.textContent = isLabMirrored ? "🪞 Mirror: ON" : "🪞 Mirror: OFF";
 }
 
+// ==================== MEDIAPIPE FACE & EYE TRACKER ====================
+let labPoseDetector = null;
+let labLandmarks = null;
+let labOffscreenCanvas = null;
+let labOffscreenCtx = null;
+let isLabPoseProcessing = false;
+let labPoseTimer = null;
+
+function initLabPose() {
+  if (typeof Pose !== "undefined" && !labPoseDetector) {
+    try {
+      labPoseDetector = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+      labPoseDetector.setOptions({
+        modelComplexity: 0, // Lite model for maximum zero-lag throughput
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.35,
+        minTrackingConfidence: 0.35
+      });
+      labPoseDetector.onResults(results => {
+        if (results && results.poseLandmarks) {
+          labLandmarks = results.poseLandmarks;
+        }
+      });
+      console.log("[Vision Lab] MediaPipe Pose tracker initialized.");
+    } catch (e) {
+      console.warn("[Vision Lab] Pose init skipped:", e);
+    }
+  }
+}
+
+function scheduleNextLabPoseInference(delay = 120) {
+  if (labPoseTimer) clearTimeout(labPoseTimer);
+  labPoseTimer = setTimeout(runDecoupledLabPose, delay);
+}
+
+async function runDecoupledLabPose() {
+  if (!labStream || !labPoseDetector) {
+    scheduleNextLabPoseInference(200);
+    return;
+  }
+  if (isLabPoseProcessing) {
+    scheduleNextLabPoseInference(60);
+    return;
+  }
+
+  const video = document.getElementById("labVideo");
+  const droidImg = document.getElementById("labDroidCamImg");
+  const isDroidCam = (labStream === "droidcam" && droidImg && droidImg.src);
+  const sourceElem = isDroidCam ? droidImg : video;
+
+  if (isDroidCam) {
+    if (!droidImg.complete || droidImg.naturalWidth === 0) {
+      scheduleNextLabPoseInference(100);
+      return;
+    }
+  } else {
+    if (!video || video.readyState < 2) {
+      scheduleNextLabPoseInference(150);
+      return;
+    }
+  }
+
+  if (!labOffscreenCanvas) {
+    labOffscreenCanvas = document.createElement("canvas");
+    labOffscreenCanvas.width = 320;
+    labOffscreenCanvas.height = 180;
+    labOffscreenCtx = labOffscreenCanvas.getContext("2d", { willReadFrequently: true, alpha: false });
+  }
+
+  isLabPoseProcessing = true;
+  try {
+    const ow = labOffscreenCanvas.width, oh = labOffscreenCanvas.height;
+    labOffscreenCtx.save();
+    labOffscreenCtx.clearRect(0, 0, ow, oh);
+    labOffscreenCtx.translate(ow / 2, oh / 2);
+    labOffscreenCtx.rotate((labRotation * Math.PI) / 180);
+    if (isLabMirrored) labOffscreenCtx.scale(-1, 1);
+    const oswap = (labRotation % 180 !== 0);
+    const odw = oswap ? oh : ow;
+    const odh = oswap ? ow : oh;
+    labOffscreenCtx.drawImage(sourceElem, -odw / 2, -odh / 2, odw, odh);
+    labOffscreenCtx.restore();
+
+    await labPoseDetector.send({ image: labOffscreenCanvas });
+  } catch (err) {
+    // Graceful frame skip
+  } finally {
+    isLabPoseProcessing = false;
+    scheduleNextLabPoseInference(120);
+  }
+}
+
 async function startLabCamera() {
   const overlay = document.getElementById("labPermissionOverlay");
   const video = document.getElementById("labVideo");
   const canvas = document.getElementById("labCanvas");
   const controls = document.getElementById("labControlsOverlay");
   const statusBadge = document.getElementById("labStatusBadge");
+  const droidImg = document.getElementById("labDroidCamImg");
 
   try {
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> CONNECTING DRIVER CAM...';
 
-    // Stop any existing tracks
+    // Stop any existing tracks across system
     stopLabCamera();
+    if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
 
-    // Progressive getUserMedia constraint fallback (fixes OverconstrainedError on Windows/USB webcams)
+    // Progressive getUserMedia constraint fallback (fixes OverconstrainedError on Windows webcams)
     let stream = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60, min: 30 } },
         audio: false
       });
     } catch (e1) {
@@ -137,16 +234,31 @@ async function startLabCamera() {
     window.labDroidcamImg = null;
 
     video.srcObject = labStream;
-    await video.play();
+    try {
+      await video.play();
+    } catch (playErr) {
+      console.warn("video.play() auto-resumed:", playErr);
+    }
 
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const syncDims = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      } else {
+        canvas.width = 1280;
+        canvas.height = 720;
+      }
+    };
+    video.onloadedmetadata = syncDims;
+    syncDims();
 
     if (overlay) overlay.style.display = "none";
     if (controls) controls.style.display = "flex";
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DRIVER CAM LIVE (60 FPS)';
 
+    initLabPose();
     requestAnimationFrame(labRenderLoop);
+    scheduleNextLabPoseInference(100);
 
   } catch (err) {
     console.error("Driver Camera access error:", err);
@@ -166,6 +278,7 @@ async function promptLabDroidCam() {
   const statusBadge = document.getElementById("labStatusBadge");
   const canvas = document.getElementById("labCanvas");
   const video = document.getElementById("labVideo");
+  const droidImg = document.getElementById("labDroidCamImg");
 
   // 1. Check for DroidCam Virtual Camera device in Windows
   let droidcamDev = null;
@@ -174,40 +287,53 @@ async function promptLabDroidCam() {
     droidcamDev = devices.find(d => d.kind === "videoinput" && d.label.toLowerCase().includes("droidcam"));
   } catch (e) {}
 
+  let useDirect = false;
   if (droidcamDev) {
-    const useDirect = confirm(`Detected Windows DroidCam Client ("${droidcamDev.label}")!\n\nClick OK to connect directly via DirectShow Driver.\nClick Cancel to connect via Wi-Fi IP.`);
-    if (useDirect) {
-      try {
-        stopLabCamera();
-        labStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: droidcamDev.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false
-        });
-        window.labStream = labStream;
-        window.visionLabStream = labStream;
-        window.labDroidcamImg = null;
+    useDirect = confirm(
+      `Detected Windows DroidCam Client ("${droidcamDev.label}")!\n\n` +
+      `• Click OK to connect via DroidCam PC Client.\n  (Ensure 'Start' is pressed in DroidCam PC app to avoid green standby screen).\n\n` +
+      `• Click CANCEL to connect via Phone Wi-Fi IP.\n  (Recommended: Direct phone stream, 100% green-screen free).`
+    );
+  }
 
-        video.srcObject = labStream;
-        await video.play();
+  if (useDirect && droidcamDev) {
+    try {
+      stopLabCamera();
+      if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
 
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+      labStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: droidcamDev.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      window.labStream = labStream;
+      window.visionLabStream = labStream;
+      window.labDroidcamImg = null;
 
-        if (overlay) overlay.style.display = "none";
-        if (controls) controls.style.display = "flex";
-        if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD (DIRECTSHOW)';
+      video.srcObject = labStream;
+      await video.play();
 
-        requestAnimationFrame(labRenderLoop);
-        return;
-      } catch (err) {
-        console.warn("DirectShow connect error, falling back to IP:", err);
-      }
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+
+      if (overlay) overlay.style.display = "none";
+      if (controls) controls.style.display = "flex";
+      if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD (DIRECTSHOW)';
+
+      initLabPose();
+      requestAnimationFrame(labRenderLoop);
+      scheduleNextLabPoseInference(100);
+      return;
+    } catch (err) {
+      console.warn("DirectShow connect error, falling back to IP:", err);
     }
   }
 
   // 2. Wi-Fi IP Stream connection via CORS Proxy (Fixes HTML5 <video> green screen bug!)
   const currentIp = localStorage.getItem("cctv_droidcam_ip") || "http://192.168.1.100:4747/video";
-  const rawUrl = prompt("Enter DroidCam Wi-Fi IP Stream URL\n(As displayed on your phone screen, e.g. http://192.168.1.105:4747):", currentIp);
+  const rawUrl = prompt(
+    "Enter DroidCam Wi-Fi IP Stream URL\n(As displayed on your phone screen, e.g. http://192.168.1.105:4747):",
+    currentIp
+  );
   if (!rawUrl) return;
 
   let streamUrl = rawUrl.trim();
@@ -225,30 +351,33 @@ async function promptLabDroidCam() {
 
   // Load via CORS Proxy to eliminate green screen!
   const proxyUrl = `/api/proxy/droidcam?url=${encodeURIComponent(streamUrl)}`;
-  const img = new Image();
-  img.crossOrigin = "anonymous";
+  const targetImg = droidImg || new Image();
+  targetImg.crossOrigin = "anonymous";
+  if (droidImg) droidImg.style.display = "block";
 
-  img.onload = () => {
-    canvas.width = img.naturalWidth || 1280;
-    canvas.height = img.naturalHeight || 720;
+  targetImg.onload = () => {
+    canvas.width = targetImg.naturalWidth || 1280;
+    canvas.height = targetImg.naturalHeight || 720;
     labStream = "droidcam";
     window.labStream = "droidcam";
     window.visionLabStream = "droidcam";
-    window.labDroidcamImg = img;
+    window.labDroidcamImg = targetImg;
 
     if (overlay) overlay.style.display = "none";
     if (controls) controls.style.display = "flex";
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD LIVE';
 
+    initLabPose();
     requestAnimationFrame(labRenderLoop);
+    scheduleNextLabPoseInference(100);
   };
 
-  img.onerror = () => {
+  targetImg.onerror = () => {
     alert(`Could not connect to DroidCam stream at:\n${streamUrl}\n\nPlease check:\n1. DroidCam is open and running on your phone.\n2. Your PC and phone are connected to the SAME Wi-Fi network.\n3. The IP address matches the "WiFi IP" displayed on your phone.`);
     if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ DROIDCAM OFFLINE</span>';
   };
 
-  img.src = proxyUrl;
+  targetImg.src = proxyUrl;
 }
 
 function loadDriverDemoClip() {
@@ -257,12 +386,16 @@ function loadDriverDemoClip() {
   const canvas = document.getElementById("labCanvas");
   const controls = document.getElementById("labControlsOverlay");
   const statusBadge = document.getElementById("labStatusBadge");
+  const droidImg = document.getElementById("labDroidCamImg");
 
   stopLabCamera();
+  if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
 
   video.srcObject = null;
   video.src = "/static/videos/cv_demo_01.mp4";
   video.loop = true;
+  video.muted = true;
+  video.playsInline = true;
 
   video.play().then(() => {
     canvas.width = video.videoWidth || 1280;
@@ -276,13 +409,19 @@ function loadDriverDemoClip() {
     if (controls) controls.style.display = "flex";
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DEMO FEED RUNNING';
 
+    initLabPose();
     requestAnimationFrame(labRenderLoop);
+    scheduleNextLabPoseInference(120);
   }).catch(err => {
     console.error("Demo clip load error:", err);
   });
 }
 
 function stopLabCamera() {
+  if (labPoseTimer) {
+    clearTimeout(labPoseTimer);
+    labPoseTimer = null;
+  }
   if (labStream && typeof labStream.getTracks === "function") {
     labStream.getTracks().forEach(track => {
       try { track.stop(); } catch (e) {}
@@ -291,7 +430,13 @@ function stopLabCamera() {
   labStream = null;
   window.labStream = null;
   window.visionLabStream = null;
+  labLandmarks = null;
 
+  const droidImg = document.getElementById("labDroidCamImg");
+  if (droidImg) {
+    droidImg.src = "";
+    droidImg.style.display = "none";
+  }
   if (window.labDroidcamImg) {
     try { window.labDroidcamImg.src = ""; } catch (e) {}
     window.labDroidcamImg = null;
@@ -302,6 +447,8 @@ function stopLabCamera() {
     video.srcObject = null;
     video.pause();
   }
+
+  silenceEmergencyAlarm();
 
   const overlay = document.getElementById("labPermissionOverlay");
   const controls = document.getElementById("labControlsOverlay");
@@ -324,17 +471,18 @@ function labRenderLoop() {
 
   const video = document.getElementById("labVideo");
   const canvas = document.getElementById("labCanvas");
+  const droidImg = document.getElementById("labDroidCamImg");
   if (!canvas) return;
 
   const ctx = canvas.getContext("2d");
-  const w = canvas.width;
-  const h = canvas.height;
+  const w = canvas.width || 1280;
+  const h = canvas.height || 720;
 
   // Determine active frame source (DroidCam Image vs Video element)
-  const isDroidCam = (labStream === "droidcam" && window.labDroidcamImg);
-  const sourceElem = isDroidCam ? window.labDroidcamImg : video;
+  const isDroidCam = (labStream === "droidcam" && ((droidImg && droidImg.src) || window.labDroidcamImg));
+  const sourceElem = isDroidCam ? (droidImg || window.labDroidcamImg) : video;
 
-  if (!isDroidCam && (!video || video.readyState < 2)) {
+  if (!isDroidCam && (!video || (video.readyState < 2 && video.currentTime === 0))) {
     requestAnimationFrame(labRenderLoop);
     return;
   }
@@ -378,20 +526,40 @@ function labRenderLoop() {
 // DEMO 1: DRIVER DROWSINESS & EYE CLOSURE (EAR)
 // -------------------------------------------------------------
 function renderDrowsinessDemo(ctx, w, h, now) {
-  // Approximate eye regions around upper center face
-  const faceX = w * 0.35;
-  const faceY = h * 0.20;
-  const faceW = w * 0.30;
-  const faceH = h * 0.45;
+  // Approximate eye regions or compute from real anatomical landmarks
+  let faceX = w * 0.35;
+  let faceY = h * 0.20;
+  let faceW = w * 0.30;
+  let faceH = h * 0.45;
 
-  const leftEyeX = faceX + faceW * 0.22;
-  const leftEyeY = faceY + faceH * 0.36;
-  const rightEyeX = faceX + faceW * 0.62;
-  const rightEyeY = faceY + faceH * 0.36;
-  const eyeBoxW = faceW * 0.22;
-  const eyeBoxH = faceH * 0.16;
+  let leftEyeX = faceX + faceW * 0.22;
+  let leftEyeY = faceY + faceH * 0.36;
+  let rightEyeX = faceX + faceW * 0.62;
+  let rightEyeY = faceY + faceH * 0.36;
+  let eyeBoxW = faceW * 0.22;
+  let eyeBoxH = faceH * 0.16;
 
-  // Determine if eyes are closed (either via simulation or periodic natural blink)
+  // Real-time tracking alignment from MediaPipe landmarks
+  if (labLandmarks && labLandmarks[0] && (labLandmarks[0].visibility || 1) > 0.35) {
+    const nose = labLandmarks[0];
+    const leftEye = labLandmarks[2] || labLandmarks[0];
+    const rightEye = labLandmarks[5] || labLandmarks[0];
+    const eyeDist = Math.max(0.06, Math.abs(rightEye.x - leftEye.x));
+
+    faceW = Math.max(120, eyeDist * 3.4 * w);
+    faceH = faceW * 1.35;
+    faceX = Math.max(0, Math.min(w - faceW, (nose.x * w) - (faceW / 2)));
+    faceY = Math.max(0, Math.min(h - faceH, (nose.y * h) - (faceH * 0.45)));
+
+    eyeBoxW = Math.max(32, faceW * 0.24);
+    eyeBoxH = eyeBoxW * 0.65;
+    leftEyeX = (leftEye.x * w) - (eyeBoxW / 2);
+    leftEyeY = (leftEye.y * h) - (eyeBoxH / 2);
+    rightEyeX = (rightEye.x * w) - (eyeBoxW / 2);
+    rightEyeY = (rightEye.y * h) - (eyeBoxH / 2);
+  }
+
+  // Determine if eyes are closed (simulation, natural blink, or trigger)
   let simulatedClosed = (now < simulatedDrowsyUntil);
   syntheticBlinkPhase += 0.035;
   let naturalBlink = Math.sin(syntheticBlinkPhase) > 0.96; // Occasional natural blink
@@ -469,9 +637,9 @@ function renderDrowsinessDemo(ctx, w, h, now) {
 
   // Draw HUD Metrics Overlay Box on Top Left of Canvas
   ctx.fillStyle = "rgba(9, 9, 11, 0.85)";
-  ctx.fillRect(16, 16, 260, 90);
+  ctx.fillRect(16, 16, 280, 95);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-  ctx.strokeRect(16, 16, 260, 90);
+  ctx.strokeRect(16, 16, 280, 95);
 
   ctx.fillStyle = "#f4f4f5";
   ctx.font = "bold 12px 'Inter', sans-serif";
@@ -484,10 +652,34 @@ function renderDrowsinessDemo(ctx, w, h, now) {
   ctx.fillStyle = "#a1a1aa";
   ctx.font = "11px 'JetBrains Mono', monospace";
   ctx.fillText(`EAR: ${earValue.toFixed(2)} | DURATION: ${closedDuration.toFixed(1)}s / ${drowsyThresholdSec.toFixed(1)}s`, 26, 78);
+  ctx.fillText(`THREAT: ${closedNow ? (closedDuration >= drowsyThresholdSec ? "CRITICAL (SIREN ON)" : "WARNING") : "NOMINAL"}`, 26, 95);
 
   ctx.restore();
 
-  // Update HTML Telemetry Gauges
+  // Update domain_driver_safety.html UI Telemetry Gauges
+  const earValDisplay = document.getElementById("earValueDisplay");
+  const earStatusBadge = document.getElementById("earStatusBadge");
+  const earProgressBar = document.getElementById("earProgressBar");
+
+  if (earValDisplay) earValDisplay.textContent = earValue.toFixed(2);
+  if (earProgressBar) {
+    const pct = Math.min(100, Math.max(5, (earValue / 0.40) * 100));
+    earProgressBar.style.width = `${pct}%`;
+    earProgressBar.style.background = closedNow ? "var(--danger)" : "var(--success)";
+  }
+  if (earStatusBadge) {
+    if (closedNow) {
+      earStatusBadge.innerHTML = `<span style="color: var(--danger);">● CRITICAL: EYES CLOSED (${closedDuration.toFixed(1)}s)</span>`;
+      earStatusBadge.style.background = "rgba(239, 68, 68, 0.2)";
+      earStatusBadge.style.color = "var(--danger)";
+    } else {
+      earStatusBadge.innerHTML = `● EYES OPEN &bull; ATTENTIVE`;
+      earStatusBadge.style.background = "rgba(34, 197, 94, 0.15)";
+      earStatusBadge.style.color = "var(--success)";
+    }
+  }
+
+  // Update vision_lab.html UI Telemetry Gauges (Fallback)
   const earValEl = document.getElementById("metricEarVal");
   const earBarEl = document.getElementById("metricEarBar");
   const earStateEl = document.getElementById("metricEarState");

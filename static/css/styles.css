@@ -916,20 +916,23 @@ table.cctv-table tr:hover td {
 }
 
 .hero-video-elem {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: none;
-  background: #000;
-}
-
-.hero-canvas-elem {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hero-canvas-elem {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 2;
 }
 
 .permission-overlay {

@@ -43,6 +43,7 @@ async function promptConnectDroidCam() {
   const statusBadge = document.getElementById("streamStatusBadge");
   const canvas = document.getElementById("inbuiltCanvas");
   const video = document.getElementById("inbuiltVideo");
+  const droidImg = document.getElementById("inbuiltDroidCamImg");
 
   // 1. Probe for DroidCam Virtual Camera device in Windows (DirectShow Driver)
   let droidcamDevice = null;
@@ -51,38 +52,49 @@ async function promptConnectDroidCam() {
     droidcamDevice = devices.find(d => d.kind === "videoinput" && d.label.toLowerCase().includes("droidcam"));
   } catch (e) {}
 
+  let useDirect = false;
   if (droidcamDevice) {
-    const useDirect = confirm(`Detected Windows DroidCam Client ("${droidcamDevice.label}")!\n\nClick OK to connect directly via DirectShow (Zero Latency HD).\nClick Cancel to connect via Wi-Fi IP.`);
-    if (useDirect) {
-      try {
-        if (inbuiltStream && typeof inbuiltStream.getTracks === "function") {
-          inbuiltStream.getTracks().forEach(t => t.stop());
-        }
-        window.droidcamImgElement = null;
-        inbuiltStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: droidcamDevice.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false
-        });
-        video.srcObject = inbuiltStream;
-        await video.play();
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        if (overlay) overlay.style.display = "none";
-        if (controls) controls.style.display = "flex";
-        if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD (DIRECTSHOW)';
-        initPoseModel();
-        requestAnimationFrame(renderLoop);
-        scheduleNextPoseInference(90);
-        return;
-      } catch (err) {
-        console.warn("Direct DroidCam device connect failed, falling back to IP stream:", err);
+    useDirect = confirm(
+      `Detected Windows DroidCam Client ("${droidcamDevice.label}")!\n\n` +
+      `• Click OK to connect via DroidCam PC Client.\n  (Ensure 'Start' is pressed in DroidCam PC app to avoid green standby screen).\n\n` +
+      `• Click CANCEL to connect via Phone Wi-Fi IP.\n  (Recommended: Direct phone stream, 100% green-screen free).`
+    );
+  }
+
+  if (useDirect && droidcamDevice) {
+    try {
+      if (inbuiltStream && typeof inbuiltStream.getTracks === "function") {
+        inbuiltStream.getTracks().forEach(t => t.stop());
       }
+      if (droidImg) { droidImg.src = ""; droidImg.style.display = "none"; }
+      window.droidcamImgElement = null;
+
+      inbuiltStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: droidcamDevice.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      video.srcObject = inbuiltStream;
+      await video.play();
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      if (overlay) overlay.style.display = "none";
+      if (controls) controls.style.display = "flex";
+      if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD (DIRECTSHOW)';
+      initPoseModel();
+      requestAnimationFrame(renderLoop);
+      scheduleNextPoseInference(90);
+      return;
+    } catch (err) {
+      console.warn("Direct DroidCam device connect failed, falling back to IP stream:", err);
     }
   }
 
   // 2. Wi-Fi IP Stream Connection via CORS Proxy (Fixes HTML5 <video> green screen bug!)
   const currentIp = localStorage.getItem("cctv_droidcam_ip") || "http://192.168.1.100:4747/video";
-  const rawUrl = prompt("Enter DroidCam Wi-Fi IP Stream URL\n(As displayed in DroidCam app on your phone, e.g. http://192.168.1.105:4747):", currentIp);
+  const rawUrl = prompt(
+    "Enter DroidCam Wi-Fi IP Stream URL\n(As displayed in DroidCam app on your phone, e.g. http://192.168.1.105:4747):",
+    currentIp
+  );
   if (!rawUrl) return;
 
   let streamUrl = rawUrl.trim();
@@ -103,14 +115,15 @@ async function promptConnectDroidCam() {
 
   // Load via CORS Proxy to eliminate HTML5 <video> green screen and canvas tainting!
   const proxyUrl = `/api/proxy/droidcam?url=${encodeURIComponent(streamUrl)}`;
-  const img = new Image();
-  img.crossOrigin = "anonymous";
+  const targetImg = droidImg || new Image();
+  targetImg.crossOrigin = "anonymous";
+  if (droidImg) droidImg.style.display = "block";
   
-  img.onload = () => {
-    canvas.width = img.naturalWidth || 1280;
-    canvas.height = img.naturalHeight || 720;
+  targetImg.onload = () => {
+    canvas.width = targetImg.naturalWidth || 1280;
+    canvas.height = targetImg.naturalHeight || 720;
     inbuiltStream = "droidcam";
-    window.droidcamImgElement = img;
+    window.droidcamImgElement = targetImg;
     if (overlay) overlay.style.display = "none";
     if (controls) controls.style.display = "flex";
     if (statusBadge) statusBadge.innerHTML = '<span class="pulsing-dot-green"></span> DROIDCAM HD LIVE';
@@ -119,10 +132,13 @@ async function promptConnectDroidCam() {
     scheduleNextPoseInference(90);
   };
 
-  img.onerror = () => {
+  targetImg.onerror = () => {
     alert(`Could not connect to DroidCam stream at:\n${streamUrl}\n\nPlease check:\n1. DroidCam is open and running on your phone.\n2. Your PC and phone are connected to the SAME Wi-Fi network.\n3. The IP address matches the "WiFi IP" displayed on your phone.`);
     if (statusBadge) statusBadge.innerHTML = '<span style="color: var(--danger);">⚠ DROIDCAM OFFLINE</span>';
   };
+
+  targetImg.src = proxyUrl;
+}
 
   img.src = proxyUrl;
 }
@@ -761,6 +777,11 @@ function stopInBuiltCamera() {
   if (window.droidcamImgElement) {
     try { window.droidcamImgElement.src = ""; } catch (e) {}
     window.droidcamImgElement = null;
+  }
+  const droidImg = document.getElementById("inbuiltDroidCamImg");
+  if (droidImg) {
+    droidImg.src = "";
+    droidImg.style.display = "none";
   }
   inbuiltStream = null;
 
