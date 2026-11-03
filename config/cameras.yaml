@@ -1,15 +1,15 @@
 # Configured Cameras / Video Sources
 cameras:
   - id: "CAM-01"
-    name: "Primary Webcam (Local Device)"
+    name: "Entrance Access Gate (Simulation Stream)"
     location: "Operations Workstation"
-    source_type: "webcam" # 'webcam', 'mobile', 'rtsp', 'onvif', 'file', 'demo'
-    source_uri: "0"
-    fps: 24
+    source_type: "demo" # 'demo' prevents backend hardware camera lock so browser gets full 60 FPS webcam
+    source_uri: "synthetic"
+    fps: 20
     ai_enabled: true
     enabled: true
-    resolution: [640, 480]
-    description: "Integrated or USB webcam stream with real-time AI safety monitoring"
+    resolution: [1280, 720]
+    description: "CCTV entrance stream; client-side browser directly captures local webcam and DroidCam"
 
   - id: "CAM-02"
     name: "Mobile DroidCam Stream"
